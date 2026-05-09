@@ -1,0 +1,110 @@
+
+
+def --wrapped run-cmd [...cmd: string] {
+    let app = if ($cmd | first) == "cargo" {
+        ($cmd | first 2) | str join ' '
+    } else {
+        ($cmd | first)
+    }
+    print $"(ansi blue)\nRunning(ansi reset) ($cmd | str join ' ')"
+    let elapsed = timeit {|| ^($cmd | first) ...($cmd | skip 1)}
+    print $"(ansi magenta)($app) took ($elapsed)(ansi reset)"
+}
+
+
+# Run the test suite
+#
+# Requires the following installed:
+# - cargo-llvm-cov
+# - cargo-nextest
+def "nur test" [
+    --clean (-c) # Purge previous test artifacts. Use to refresh coverage data.
+    --profile (-p): string = 'default' # The profile defined in .config/nextest.toml
+] {
+    if $clean {
+        run-cmd cargo llvm-cov clean
+    }
+    let cmd = (
+        [cargo llvm-cov --no-report nextest --features bin]
+        | append [--color always --profile $profile]
+    )
+    with-env {ARDUINO_COMPILE_SKETCHES: "INTEGRATION TESTS SKIP CLI ARGS"} {
+        run-cmd ...$cmd
+    }
+}
+
+
+# Generate detailed coverage report
+#
+# Pass "--open" to load the built report in your browser
+# Requires cargo-llvm-cov installed.
+def "nur test html" [
+    --open(-o), # Additional arguments for `llvm-cov report --html`.
+] {
+    let args = if $open {
+        [--open]
+    } else {
+        []
+    }
+    run-cmd cargo llvm-cov report --html ...$args
+}
+
+
+# Generate lcov.info
+#
+# Useful for codecov uploads or VSCode extensions like "Coverage Gutters".
+def "nur test lcov" [] {
+    run-cmd cargo llvm-cov report --lcov --output-path lcov.info
+}
+
+
+# Rust API docs
+def "nur docs" [
+    --open (-o) # Open the built docs in your browser
+] {
+    mut cmd = [cargo doc --no-deps --lib]
+    if $open {
+        $cmd = $cmd | append '--open'
+    }
+    run-cmd ...$cmd
+}
+
+
+# Run clippy and rustfmt
+export def "nur lint" [
+    --check (-c), # Only check, do not fix
+    --no-features (-n), # Do not include features when linting
+] {
+    mut clippy = [cargo clippy]
+    if (not $no_features) {
+        $clippy = $clippy | append [--features bin]
+    }
+    if $check {
+        $clippy = $clippy | append [-- -D warnings]
+    } else {
+        $clippy = $clippy | append [--fix --allow-dirty --allow-staged]
+    }
+    run-cmd ...$clippy
+    mut fmt = [cargo fmt]
+    if $check {
+        $fmt = $fmt | append "--check"
+    }
+    run-cmd ...$fmt
+}
+
+# Run pre-commit hooks manually.
+#
+# Requires `uv` installed.
+def "nur pre-commit" [
+    --changes-only (-c), # only run pre-commit on changed files (default is all files)
+    --upgrade (-u), # upgrade pre-commit hooks defined in the .pre-commit-config.yaml
+] {
+    if $upgrade {
+        run-cmd ...[uvx pre-commit autoupdate]
+    }
+    mut args = [pre-commit, run]
+    if (not $changes_only) {
+        $args = $args | append [--all-files]
+    }
+    run-cmd ...[uvx, ...$args]
+}

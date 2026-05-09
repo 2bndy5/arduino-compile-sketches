@@ -1,0 +1,39 @@
+name: Test Self
+
+on:
+  pull_request:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  create-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Upload test report artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          path: tests/test_assets/**/*.json
+          name: sketch-reports
+
+  report-size-deltas:
+    needs: [create-assets]
+    runs-on: ubuntu-latest
+    permissions:
+      # used to post comments on PR thread
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: sketch-reports
+          path: sketches-reports
+      - name: Report size deltas
+        uses: ./

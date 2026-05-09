@@ -1,0 +1,11 @@
+# Nextest configuration for this repository
+# See https://nexte.st for full docs
+
+[profile.default]
+
+[profile.ci]
+failure-output = "final"
+
+[[profile.default.overrides]]
+filter = "test(#adafruit_mcp23017::*)"
+slow-timeout = { period = "300s", terminate-after = 2 }
