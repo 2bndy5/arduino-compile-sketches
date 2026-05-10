@@ -20,32 +20,63 @@ pub(crate) struct GitRefInfo {
 /// A Platform dependency fetched with the Board Manager.
 #[derive(Debug, Clone)]
 pub struct ManagerEntry {
+    /// The name of the dependency.
+    ///
+    /// For platforms, this is the form `vendor:board` (e.g. `arduino:avr`).
+    ///
+    /// For libraries, this is the library name used in the Arduino Library Manager (e.g. `Adafruit_BME280`).
     pub name: String,
+
+    /// The version of the dependency. (e.g. `1.8.19`)
     pub version: Option<String>,
+
+    /// The (optional) URL of the dependency source.
     pub source_url: Option<String>,
 }
 
 /// A Platform dependency specified as a local path.
 #[derive(Debug, Clone)]
 pub struct PathEntry {
+    /// The path to the dependency source.
     pub source_path: String,
+
+    /// The name of the dependency.
+    ///
+    /// This is required when used to specify a platform dependency.
+    /// For platforms, this is the form `vendor:board` (e.g. `arduino:avr`).
+    ///
+    /// For libraries, this is the destination path in which to install the library.
     pub name: Option<String>,
 }
 
 /// A Platform dependency specified as a git repository.
 #[derive(Debug, Clone)]
 pub struct RepoEntry {
+    /// The URL of the dependency source.
     pub source_url: String,
+    /// The version of the dependency. (e.g. `1.8.19`)
     pub version: Option<String>,
+    /// The (optional) local path to the dependency source.
     pub source_path: Option<String>,
+
+    /// The (optional) name to use for the destination directory.
+    ///
+    /// This is required when used to specify a platform dependency.
     pub destination_name: Option<String>,
 }
 
 /// A Platform dependency specified as a direct download.
 #[derive(Debug, Clone)]
 pub struct DownloadEntry {
+    /// The URL of the dependency source.
     pub source_url: String,
+
+    /// The (optional) local path to the dependency source.
     pub source_path: Option<String>,
+
+    /// The (optional) name to use for the destination directory.
+    ///
+    /// This is required when used to specify a platform dependency.
     pub destination_name: Option<String>,
 }
 
@@ -250,7 +281,7 @@ mod tests {
 
     #[test]
     fn deserialize_platform_list() {
-        let json = PathBuf::from("tests/core-list.json");
+        let json = PathBuf::from("tests/installed_platforms/core-list.json");
         let json_str = std::fs::read_to_string(json).unwrap();
         let platforms: InstalledPlatforms = serde_json::from_str(&json_str).unwrap();
         assert!(!platforms.platforms.is_empty());
@@ -264,5 +295,16 @@ mod tests {
         assert_eq!(is_latest, Some("1.8.6"));
         let is_not_latest = platforms.is_installed("arduino:avr", Some("1.8.5"));
         assert_eq!(is_not_latest, None);
+    }
+
+    #[test]
+    #[cfg(feature = "clap")]
+    fn fail_parse_dep_entry() {
+        use crate::error::CompileSketchesError;
+        use std::collections::HashMap;
+
+        let map = HashMap::from_iter([("invalid-key".to_string(), "unused_value".to_string())]);
+        let result = super::PlatformDependency::try_from(map);
+        assert!(result.is_err_and(|e| matches!(e, CompileSketchesError::ParseDependencyMapping)))
     }
 }

@@ -320,11 +320,11 @@ struct TestParams {
     use_download_platform: bool,
     /// Add `"Adafruit BusIO"` via the library manager.
     use_manager_lib: bool,
-    /// Symlink `tests/testdata/path-lib/` as a path library.
+    /// Symlink `tests/dep_fixtures/path-lib/` as a path library.
     use_path_lib: bool,
     /// Create a local git repo and install it via `file://` URL.
     use_repo_lib: bool,
-    /// Serve `tests/testdata/download-lib/` via mockito and install it.
+    /// Serve `tests/dep_fixtures/download-lib/` via mockito and install it.
     use_download_lib: bool,
     /// `true` → clone the real repo at HEAD_SHA as the workspace.
     /// `false` → create a minimal local workspace (for error-path tests).
@@ -403,7 +403,7 @@ async fn run_compile_test(params: TestParams) {
     // ── 3. mockito download-lib (optional) ────────────────────────────────────
     let mut mock_server = mockito::Server::new_async().await;
     let _download_mock = if params.use_download_lib {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/download-lib");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/dep_fixtures/download-lib");
         let zip_bytes = build_zip(&fixture, "download-lib");
         Some(
             mock_server
@@ -459,7 +459,7 @@ async fn run_compile_test(params: TestParams) {
 
     if params.use_path_lib {
         let path_lib = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/testdata/path-lib")
+            .join("tests/dep_fixtures/path-lib")
             .to_path_buf();
         libraries_yaml.push(format!(
             "source-path: {}\n  name: PathLib",

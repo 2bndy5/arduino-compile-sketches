@@ -100,7 +100,7 @@ impl CompileSketches {
         &self,
         compilation_output: &str,
     ) -> Result<SketchWarnings> {
-        let warn_re = Regex::new(r":[0-9]+:[0-9]+: warning:")?;
+        let warn_re = Regex::new(r"\:[0-9]+\:[0-9]+\: warning\:")?;
         let count = warn_re.find_iter(compilation_output).count();
         Ok(SketchWarnings {
             current: AbsCount {
@@ -330,6 +330,8 @@ struct SizeAggregateInternal {
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::PathBuf};
+
     use arduino_report_size_deltas::report_structs::{
         AbsCount, Board, Report, SizeValue, Sketch, SketchDeltaSize, SketchSize, SketchSizeKind,
         SketchWarnings,
@@ -385,9 +387,15 @@ mod tests {
     #[test]
     fn get_warning_count_from_output() {
         let cs = CompileSketches::default();
-        let out = "file.c:10:5: warning: something\nfile.c:20:2: warning: another\nno-warning-line";
-        let cnt = cs.get_warning_count_from_output(out).unwrap();
-        assert_eq!(cnt.current.absolute, 2);
+        let test_asset_path = PathBuf::from("tests/warnings_assets/has-warnings.txt");
+        let out = fs::read_to_string(&test_asset_path).unwrap();
+        let cnt = cs.get_warning_count_from_output(&out).unwrap();
+        assert_eq!(cnt.current.absolute, 45);
+
+        let no_warnings_asset = test_asset_path.with_file_name("no-warnings.txt");
+        let out = fs::read_to_string(&no_warnings_asset).unwrap();
+        let cnt = cs.get_warning_count_from_output(&out).unwrap();
+        assert_eq!(cnt.current.absolute, 0);
     }
 
     #[test]

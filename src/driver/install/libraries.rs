@@ -6,6 +6,10 @@ use crate::driver::CompileSketches;
 use crate::serde_types::{DownloadEntry, PathEntry, RepoEntry};
 
 impl CompileSketches {
+    /// Installs library dependencies passed to [`Self::libraries].
+    ///
+    /// Note, this will mutate and drain dependencies from [`Self::libraries`] as it installs them,
+    /// with the exception of [`Dependencies::manager`](crate::serde_types::Dependencies::manager).
     pub async fn install_libraries(&mut self) -> Result<()> {
         self.install_libraries_from_manager()?;
         self.install_libraries_from_path()?;

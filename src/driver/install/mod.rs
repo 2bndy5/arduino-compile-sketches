@@ -18,6 +18,7 @@ use crate::{
 };
 
 impl CompileSketches {
+    /// Installs the Arduino CLI if it is not already installed.
     pub async fn install_arduino_cli(&mut self) -> Result<()> {
         if self.sketch_compiler.arduino_cli_path.is_some() {
             return Ok(());
@@ -123,7 +124,7 @@ impl CompileSketches {
                 output: combined_output,
             })
         } else {
-            if self.verbose {
+            if self.sketch_compiler.verbose {
                 log::info!(target: "CI_LOG_CMD", "{combined_output}")
             }
             Ok(combined_output)
@@ -356,7 +357,7 @@ impl CompileSketches {
             .unwrap_or_default();
         extract_archive(&mut archive_path, extract_dir.path(), filename)?;
 
-        let archive_root = Self::get_archive_root_path(extract_dir.path())?;
+        let archive_root = get_archive_root_path(extract_dir.path())?;
         let src = fs::canonicalize(archive_root.join(source_path)).map_err(|source| {
             CompileSketchesError::ArchiveExtractionIo {
                 task: "resolve extracted archive root path",
@@ -366,46 +367,46 @@ impl CompileSketches {
         self.install_from_path(&src, destination_parent_path, destination_name, force)?;
         Ok(())
     }
+}
 
-    /// Determine the archive root folder given an extraction directory.
-    ///
-    /// If the extraction contains a single top-level directory, return that directory,
-    /// otherwise return the extraction directory itself.
-    fn get_archive_root_path(extract_dir: &Path) -> Result<PathBuf> {
-        let mut found_dir: Option<PathBuf> = None;
-        for entry in fs::read_dir(extract_dir).map_err(|source| {
-            CompileSketchesError::ArchiveExtractionIo {
-                task: "read extracted archive directory",
+/// Determine the archive root folder given an extraction directory.
+///
+/// If the extraction contains a single top-level directory, return that directory,
+/// otherwise return the extraction directory itself.
+fn get_archive_root_path(extract_dir: &Path) -> Result<PathBuf> {
+    let mut found_dir: Option<PathBuf> = None;
+    for entry in
+        fs::read_dir(extract_dir).map_err(|source| CompileSketchesError::ArchiveExtractionIo {
+            task: "read extracted archive directory",
+            source,
+        })?
+    {
+        let p = entry
+            .map_err(|source| CompileSketchesError::ArchiveExtractionIo {
+                task: "access extracted archive sub-path",
                 source,
-            }
-        })? {
-            let p = entry
-                .map_err(|source| CompileSketchesError::ArchiveExtractionIo {
-                    task: "access extracted archive sub-path",
-                    source,
-                })?
-                .path();
-            if p.is_dir() {
-                if let Some(name) = p.file_name().and_then(|s| s.to_str())
-                    && name != "__MACOSX"
-                {
-                    if found_dir.is_none() {
-                        // first dir found
-                        found_dir = Some(p);
-                    } else {
-                        // multiple directories found
-                        found_dir = Some(extract_dir.to_path_buf());
-                        break;
-                    }
+            })?
+            .path();
+        if p.is_dir() {
+            if let Some(name) = p.file_name().and_then(|s| s.to_str())
+                && name != "__MACOSX"
+            {
+                if found_dir.is_none() {
+                    // first dir found
+                    found_dir = Some(p);
+                } else {
+                    // multiple directories found
+                    found_dir = Some(extract_dir.to_path_buf());
+                    break;
                 }
-            } else {
-                // file found => return extract_dir
-                found_dir = Some(extract_dir.to_path_buf());
-                break;
             }
+        } else {
+            // file found => return extract_dir
+            found_dir = Some(extract_dir.to_path_buf());
+            break;
         }
-        Ok(found_dir.unwrap_or_else(|| extract_dir.to_path_buf()))
     }
+    Ok(found_dir.unwrap_or_else(|| extract_dir.to_path_buf()))
 }
 
 fn extract_archive(archive_path: &mut fs::File, extract_dir: &Path, filename: &str) -> Result<()> {
@@ -427,4 +428,38 @@ fn extract_archive(archive_path: &mut fs::File, extract_dir: &Path, filename: &s
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    // #![allow(clippy::panic)]
+
+    use std::path::PathBuf;
+
+    use crate::CompileSketchesError;
+
+    use super::get_archive_root_path;
+
+    #[test]
+    fn find_archive_root() {
+        let test_assets_path = PathBuf::from("tests/archive_root_assets");
+        let has_file_path = test_assets_path.join("has-file");
+        let result = get_archive_root_path(&has_file_path).unwrap();
+        assert_eq!(result, has_file_path);
+
+        let has_folders_path = test_assets_path.join("has-folders");
+        let result = get_archive_root_path(&has_folders_path).unwrap();
+        assert_eq!(result, has_folders_path);
+
+        let has_root_path = test_assets_path.join("has-root");
+        let result = get_archive_root_path(&has_root_path).unwrap();
+        assert_eq!(result, has_root_path.join("root"));
+
+        let non_existent_path = PathBuf::from("does-not-exist");
+        let err = get_archive_root_path(&non_existent_path).unwrap_err();
+        let CompileSketchesError::ArchiveExtractionIo { task, source: _ } = err else {
+            panic!("Expected ArchiveExtractionIo error, got: {:?}", err);
+        };
+        assert_eq!(task, "read extracted archive directory");
+    }
 }

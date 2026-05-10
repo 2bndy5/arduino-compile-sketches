@@ -1,6 +1,7 @@
 [package]
 name = "arduino-compile-sketches"
 version = "0.1.0"
+description = "A CLI tool for compiling Arduino sketches and generating reports."
 edition = "2024"
 
 [dependencies]

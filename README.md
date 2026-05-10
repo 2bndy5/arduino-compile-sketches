@@ -33,6 +33,14 @@ aside from occasionally merging dependabot updates.
   [conventional env variables][colored-env-vars]).
 - No Python runtime required. This action ships a compiled binary executable instead.
 
+> [!CAUTION]
+> When `enable-warnings-report` is enabled, the `--clean` flag is passed to `arduino-cli compile`.
+> This means warnings reports can only be generated from a version of [arduino-cli] v0.14.0-rc.1 or later.
+>
+> The [original Github action][og-action] does not use the `--clean` flag.
+> Instead it arbitrarily flushed all cached folders in `/tmp/arduino*`.
+> This approach causes numerous problems when doing parallel compilations (and tests).
+
 ## Inputs
 
 See CLI document for details about supported inputs.

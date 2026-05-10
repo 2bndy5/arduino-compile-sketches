@@ -6,6 +6,7 @@ use std::io::{Write, stdout};
 
 use log::{Level, Metadata, Record};
 
+/// A logger that writes log records to stdout.
 struct Logger;
 
 impl Logger {
@@ -71,6 +72,24 @@ impl log::Log for Logger {
 
 static LOGGER: Logger = Logger;
 
+/// Initializes the logger to write log records to stdout.
+///
+/// Errors are ignored. They are only emitted when the logger already has been set up.
 pub fn init() {
     let _ = log::set_logger(&LOGGER);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dummy_coverage() {
+        init();
+        log::set_max_level(log::LevelFilter::Trace);
+        log::error!("Some error message");
+        log::warn!("Some warning message");
+        log::trace!("Some trace message");
+        log::logger().flush();
+    }
 }

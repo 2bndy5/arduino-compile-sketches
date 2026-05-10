@@ -75,7 +75,7 @@ export def "nur lint" [
     --check (-c), # Only check, do not fix
     --no-features (-n), # Do not include features when linting
 ] {
-    mut clippy = [cargo clippy]
+    mut clippy = [cargo clippy --all-targets]
     if (not $no_features) {
         $clippy = $clippy | append [--features bin]
     }

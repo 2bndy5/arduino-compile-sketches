@@ -24,13 +24,37 @@ pub(super) struct CompilationTaskResult {
     pub(super) duration: Duration,
 }
 
+/// A struct to distribute commonly used resources during parallel compilation.
 #[derive(Debug, Clone, Default)]
 pub struct SketchCompiler {
+    /// The fully qualified board name (FQBN) for which to compile.
     pub fqbn: String,
+
+    /// The user-specified extra arguments passed to `arduino-cli compile` command.
     pub cli_compile_flags: Vec<String>,
+
+    /// The path to the Arduino CLI executable.
     pub arduino_cli_path: Option<PathBuf>,
+
+    /// The path to the Arduino CLI user directory.
     pub arduino_cli_user_directory_path: PathBuf,
+
+    /// The path to the Arduino CLI data directory.
     pub arduino_cli_data_directory_path: PathBuf,
+
+    /// Whether to enable warnings report.
+    ///
+    /// When enabled, requires arduino-cli v0.14.0-rc.1 or later.
+    pub enable_warnings_report: bool,
+
+    /// Whether to enable verbose output.
+    ///
+    /// When enabled, this
+    ///
+    /// - emits the `arduino-cli compile` command output to the console.
+    /// - passes the `--verbose` flag to `arduino-cli compile` command.
+    /// - enables [`log::debug!()`] level logs.
+    pub verbose: bool,
 }
 
 pub(super) struct CompilationResult {
@@ -121,6 +145,14 @@ impl SketchCompiler {
             for f in &self.cli_compile_flags {
                 cmd.arg(f);
             }
+        }
+        if self.verbose {
+            cmd.arg("--verbose");
+        }
+        if self.enable_warnings_report {
+            // requires arduino-cli v0.14.0-rc.1
+            // This is done so that reusing the build cache does not hide any old warnings
+            cmd.arg("--clean");
         }
         let invoked_command = format!(
             "{} {}",

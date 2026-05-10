@@ -15,6 +15,10 @@ struct PlatformInstallPath {
 }
 
 impl CompileSketches {
+    /// Installs platform dependencies passed to [`Self::platforms`].
+    ///
+    /// Note, this will mutate and drain dependencies from [`Self::platforms`] as it installs them,
+    /// with the exception of [`Dependencies::manager`](crate::serde_types::Dependencies::manager).
     pub async fn install_platforms(&mut self) -> Result<()> {
         if self.platforms.manager.is_empty()
             && self.platforms.path.is_empty()

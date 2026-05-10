@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{env, ffi::OsStr, fs, path::Path, process::Command, time::Duration};
 
-pub fn get_base_ref() -> Option<String> {
+pub(crate) fn get_base_ref() -> Option<String> {
     if let Ok(event_name) = env::var("GITHUB_EVENT_NAME")
         && let Ok(event_path) = env::var("GITHUB_EVENT_PATH")
         && let Ok(f) = fs::File::open(event_path)
@@ -91,22 +91,14 @@ pub(crate) fn fmt_duration(duration: &Duration) -> String {
 }
 
 pub(crate) fn create_symlink(src: &Path, dst: &Path) -> std::io::Result<()> {
-    if src.is_dir() {
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(src, dst)?;
-        }
-        #[cfg(windows)]
-        {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(src, dst)?;
+
+    #[cfg(windows)]
+    {
+        if src.is_dir() {
             std::os::windows::fs::symlink_dir(src, dst)?;
-        }
-    } else {
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(src, dst)?;
-        }
-        #[cfg(windows)]
-        {
+        } else {
             std::os::windows::fs::symlink_file(src, dst)?;
         }
     }
@@ -122,7 +114,7 @@ fn is_dir_hidden(path: &Path) -> bool {
 }
 
 /// Recursively visit files/directories under `path`, calling `cb` for each file or directory found.
-pub fn visit_dirs_recursive<F>(path: &Path, cb: &mut F) -> std::io::Result<()>
+pub(crate) fn visit_dirs_recursive<F>(path: &Path, cb: &mut F) -> std::io::Result<()>
 where
     F: FnMut(&Path),
 {
@@ -221,13 +213,48 @@ mod tests {
     }
 
     #[test]
-    fn base_ref_from_git_cli() {
-        // create a git repo with two commits so HEAD~1 exists
+    fn base_ref_from_push_event() {
         let td = tempfile::tempdir().unwrap();
-        let repo = td.path().to_path_buf();
+        let p = td.path().join("event.json");
+        let mut f = File::create(&p).unwrap();
+        writeln!(
+            f,
+            "{}",
+            serde_json::json!({
+                "before": "base-sha",
+            })
+        )
+        .unwrap();
+        unsafe {
+            std::env::set_var("GITHUB_EVENT_NAME", "push");
+            std::env::set_var("GITHUB_EVENT_PATH", p.to_str().unwrap());
+        }
+        let val = get_base_ref();
+        assert_eq!(val.unwrap(), "base-sha");
+    }
+
+    fn create_ref_from_git_cli(
+        event_kind: &str,
+        with_base_ref: bool,
+    ) -> (String, tempfile::TempDir) {
+        #[cfg(feature = "bin")]
+        {
+            // trigger `log::warn!()` calls
+            crate::logger::init();
+        }
+
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let repo = tmp_dir.path().to_path_buf();
+        let event_path = repo.join("event.json");
+        fs::write(&event_path, "{}").unwrap();
         unsafe {
             std::env::set_var("GITHUB_WORKSPACE", repo.to_str().unwrap());
+            std::env::set_var("GITHUB_EVENT_NAME", event_kind);
+            // clear any env to force fallback
+            std::env::set_var("GITHUB_EVENT_PATH", event_path.to_str().unwrap());
         }
+
+        // create a git repo with head commit
         fs::write(repo.join("a.txt"), "one").unwrap();
         Command::new("git")
             .arg("init")
@@ -251,41 +278,82 @@ mod tests {
             .env("GIT_COMMITTER_EMAIL", "test@example.com")
             .status()
             .unwrap();
-        fs::write(repo.join("a.txt"), "two").unwrap();
-        Command::new("git")
-            .arg("add")
-            .arg(".")
-            .current_dir(&repo)
-            .status()
-            .unwrap();
-        Command::new("git")
-            .arg("commit")
-            .arg("-m")
-            .arg("c2")
-            .current_dir(&repo)
-            .env("GIT_AUTHOR_NAME", "Test")
-            .env("GIT_AUTHOR_EMAIL", "test@example.com")
-            .env("GIT_COMMITTER_NAME", "Test")
-            .env("GIT_COMMITTER_EMAIL", "test@example.com")
-            .status()
-            .unwrap();
-
-        // compute expected parent via git rev-parse
+        if with_base_ref {
+            // push a commit to create a new head commit (letting old head become the base ref)
+            fs::write(repo.join("a.txt"), "two").unwrap();
+            Command::new("git")
+                .arg("add")
+                .arg(".")
+                .current_dir(&repo)
+                .status()
+                .unwrap();
+            Command::new("git")
+                .arg("commit")
+                .arg("-m")
+                .arg("c2")
+                .current_dir(&repo)
+                .env("GIT_AUTHOR_NAME", "Test")
+                .env("GIT_AUTHOR_EMAIL", "test@example.com")
+                .env("GIT_COMMITTER_NAME", "Test")
+                .env("GIT_COMMITTER_EMAIL", "test@example.com")
+                .status()
+                .unwrap();
+        }
         let out = Command::new("git")
             .current_dir(&repo)
-            .args(["rev-parse", "HEAD~1"])
+            .args(["rev-parse", if with_base_ref { "HEAD~1" } else { "HEAD" }])
             .output()
             .unwrap();
         let expected = String::from_utf8(out.stdout).unwrap().trim().to_string();
+        (expected, tmp_dir)
+    }
 
-        // clear any pull_request env to force fallback
-        unsafe {
-            std::env::remove_var("GITHUB_EVENT_NAME");
-            std::env::remove_var("GITHUB_EVENT_PATH");
-        }
-
+    #[test]
+    fn base_ref_for_push_from_git_cli() {
+        let (expected, tmp) = create_ref_from_git_cli("push", true);
         let val = get_base_ref();
         assert_eq!(val.unwrap(), expected);
+        drop(tmp);
+    }
+
+    #[test]
+    fn base_ref_for_pr_from_git_cli() {
+        let (expected, tmp) = create_ref_from_git_cli("pull_request", true);
+        let val = get_base_ref();
+        assert_eq!(val.unwrap(), expected);
+        drop(tmp);
+    }
+
+    #[test]
+    fn base_ref_for_unknown_event_from_git_cli() {
+        let (expected, tmp) = create_ref_from_git_cli("unsupported", true);
+        let val = get_base_ref();
+        assert_eq!(val.unwrap(), expected);
+        drop(tmp);
+    }
+
+    #[test]
+    fn head_ref_for_push_from_git_cli() {
+        let (expected, tmp) = create_ref_from_git_cli("push", false);
+        let val = get_head_ref();
+        assert_eq!(val.unwrap(), expected);
+        drop(tmp);
+    }
+
+    #[test]
+    fn head_ref_for_pr_from_git_cli() {
+        let (expected, tmp) = create_ref_from_git_cli("pull_request", false);
+        let val = get_head_ref();
+        assert_eq!(val.unwrap(), expected);
+        drop(tmp);
+    }
+
+    #[test]
+    fn head_ref_for_unknown_event_from_git_cli() {
+        let (expected, tmp) = create_ref_from_git_cli("unsupported", false);
+        let val = get_head_ref();
+        assert_eq!(val.unwrap(), expected);
+        drop(tmp);
     }
 
     #[test]
@@ -294,5 +362,40 @@ mod tests {
         assert_eq!(fmt_duration(&Duration::from_secs(75)), "1m 15s");
         assert_eq!(fmt_duration(&Duration::from_secs(3600)), "1h 0m 0s");
         assert_eq!(fmt_duration(&Duration::from_secs(3665)), "1h 1m 5s");
+    }
+
+    fn setup_unknown_git_ref() -> tempfile::TempDir {
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        unsafe {
+            env::set_var("GITHUB_WORKSPACE", tmp_dir.path().to_str().unwrap());
+            env::remove_var("GITHUB_EVENT_NAME");
+        }
+        tmp_dir
+    }
+
+    #[test]
+    fn unknown_head_ref() {
+        let tmp = setup_unknown_git_ref();
+        let val = get_head_ref();
+        assert!(val.is_none());
+        drop(tmp);
+    }
+
+    #[test]
+    fn unknown_base_ref() {
+        let tmp = setup_unknown_git_ref();
+        let val = get_base_ref();
+        assert!(val.is_none());
+        drop(tmp);
+    }
+
+    #[test]
+    fn skip_hidden_path() {
+        let tmp = tempfile::TempDir::with_prefix(".test-dummy").unwrap();
+        let mut found = vec![];
+        let mut cb = |p: &Path| found.push(p.to_string_lossy().into_owned());
+        visit_dirs_recursive(tmp.path(), &mut cb).unwrap();
+        assert!(found.is_empty());
+        drop(tmp);
     }
 }

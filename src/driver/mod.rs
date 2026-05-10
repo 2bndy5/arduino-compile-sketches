@@ -24,10 +24,19 @@ pub use compiler::SketchCompiler;
 
 /// Helper struct to provide default paths.
 pub struct DefaultPaths {
+    /// The path to the Arduino CLI user directory.
     pub arduino_cli_user_directory_path: PathBuf,
+
+    /// The path to Arduino libraries directory.
     pub libraries_path: PathBuf,
+
+    /// The path to the user platforms directory.
     pub user_platforms_path: PathBuf,
+
+    /// The path to the Arduino CLI data directory.
     pub arduino_cli_data_directory_path: PathBuf,
+
+    /// The path to the board manager platforms directory.
     pub board_manager_platforms_path: PathBuf,
 }
 
@@ -57,20 +66,59 @@ impl Default for DefaultPaths {
 /// It is also responsible for generating reports and cleaning up temporary assets.
 #[derive(Debug)]
 pub struct CompileSketches {
+    /// The version of the Arduino CLI to be used.
     pub cli_version: String,
+
+    /// The platform dependencies to be used.
     pub platforms: Dependencies,
+
+    /// The library dependencies to be used.
     pub libraries: Dependencies,
+
+    /// The paths to the sketches to be compiled.
     pub sketch_paths: Vec<PathBuf>,
-    pub verbose: bool,
+
+    /// Whether to fail on compile errors.
+    ///
+    /// Defaults to `true`.
     pub fail_on_compile_error: bool,
+
+    /// Whether to enable deltas report generation.
+    ///
+    /// Defaults to `false`.
+    /// Only applies to PR events.
     pub enable_deltas_report: bool,
-    pub enable_warnings_report: bool,
+
+    /// The path for storing generated reports.
     pub sketches_report_path: PathBuf,
+
+    /// The paths used for installing libraries.
     pub libraries_path: PathBuf,
+
+    /// The path used for installing platforms.
     pub user_platforms_path: PathBuf,
+
+    /// The path used for installing platforms from the Arduino Board Manager.
     pub board_manager_platforms_path: PathBuf,
+
+    /// The HTTP client to use for making requests.
+    ///
+    /// Typically used for downloaded dependencies.
     pub http_client: Client,
+
+    /// Any temporary paths that should be cleaned up.
+    ///
+    /// These paths will be deleted just before a normal exit.
+    /// So, the paths here are not atomic; any propagated errors can prevent purging these paths.
+    ///
+    /// Typically, this is used for installing dependencies (libraries or platforms)
+    /// without using the arduino-cli (which basically drives the Arduino IDE library or platform managers).
     pub clean_up_paths: Vec<PathBuf>,
+
+    /// The sketch compiler to use for compiling sketches.
+    ///
+    /// The is used to keep thread-safe resources shared (cloned actually)
+    /// across parallel compilation tasks.
     pub sketch_compiler: SketchCompiler,
 }
 
@@ -97,6 +145,8 @@ impl Default for CompileSketches {
             arduino_cli_path: None,
             arduino_cli_user_directory_path: default_paths.arduino_cli_user_directory_path,
             arduino_cli_data_directory_path: default_paths.arduino_cli_data_directory_path,
+            enable_warnings_report: false,
+            verbose: false,
         };
         #[allow(
             clippy::expect_used,
@@ -114,10 +164,8 @@ impl Default for CompileSketches {
             platforms: Dependencies::default(),
             libraries: Dependencies::default(),
             sketch_paths: vec![],
-            verbose: false,
             fail_on_compile_error: true,
             enable_deltas_report: false,
-            enable_warnings_report: false,
             sketches_report_path: PathBuf::from("Reports"),
             libraries_path: default_paths.libraries_path,
             user_platforms_path: default_paths.user_platforms_path,
@@ -130,6 +178,7 @@ impl Default for CompileSketches {
 }
 
 impl CompileSketches {
+    /// Creates a new [`CompileSketches`] instance from environment variables and CLI arguments.
     #[cfg(feature = "bin")]
     pub fn new_from_env() -> Result<Self> {
         use crate::cli::CliArgs;
@@ -202,6 +251,8 @@ impl CompileSketches {
             arduino_cli_path: None,
             arduino_cli_user_directory_path: default_paths.arduino_cli_user_directory_path,
             arduino_cli_data_directory_path: default_paths.arduino_cli_data_directory_path,
+            enable_warnings_report: args.enable_warnings_report,
+            verbose: args.verbose,
         };
 
         Ok(Self {
@@ -209,10 +260,8 @@ impl CompileSketches {
             platforms,
             libraries,
             sketch_paths,
-            verbose: args.verbose,
             fail_on_compile_error: args.fail_on_compile_error,
             enable_deltas_report: args.enable_deltas_report,
-            enable_warnings_report: args.enable_warnings_report,
             sketches_report_path: args.sketches_report_path,
             libraries_path: default_paths.libraries_path,
             user_platforms_path: default_paths.user_platforms_path,
@@ -223,6 +272,9 @@ impl CompileSketches {
         })
     }
 
+    /// Compiles sketches and generates reports.
+    ///
+    /// This also installs all dependencies and arduino-cli per fields in the [`CompileSketches`] struct.
     pub async fn compile_sketches(&mut self) -> Result<()> {
         let sketches = self.find_sketches()?;
         let sketch_count = sketches.len();
@@ -257,10 +309,6 @@ impl CompileSketches {
             } else {
                 log::warn!("Failed to clone/checkout base ref {base_ref}; deltas will be skipped");
             }
-        }
-
-        if self.enable_warnings_report {
-            self.clean_up_arduino_temp_dirs();
         }
 
         let mut compile_jobs = JoinSet::new();
@@ -397,7 +445,7 @@ impl CompileSketches {
                 }
                 log::error!(target: "CI_LOG_CMD", "{}", result.output);
             }
-            if result.success && self.verbose {
+            if result.success && self.sketch_compiler.verbose {
                 log::debug!(target: "CI_LOG_CMD", "{}", result.output);
             }
             log::info!(target: "CI_LOG_CMD", "::endgroup::");
@@ -411,7 +459,7 @@ impl CompileSketches {
             } else {
                 Vec::new()
             };
-            let warnings = if self.enable_warnings_report && result.success {
+            let warnings = if self.sketch_compiler.enable_warnings_report && result.success {
                 Some(self.get_warning_count_from_output(&result.output)?)
             } else {
                 None
@@ -533,19 +581,7 @@ impl CompileSketches {
         Ok(found.into_iter().collect())
     }
 
-    fn clean_up_arduino_temp_dirs(&self) {
-        let tmp = std::env::temp_dir();
-        if let Ok(entries) = fs::read_dir(&tmp) {
-            for entry in entries.flatten() {
-                if let Some(name) = entry.file_name().to_str()
-                    && name.starts_with("arduino")
-                {
-                    let _ = fs::remove_dir_all(entry.path());
-                }
-            }
-        }
-    }
-
+    /// Cleans up assets aggregated in [`CompileSketches::clean_up_paths`].
     fn clean_up_tmp_assets(&mut self) -> Result<()> {
         for path in &self.clean_up_paths {
             if path.exists() {

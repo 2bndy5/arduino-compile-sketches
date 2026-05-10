@@ -3,6 +3,10 @@ use std::path::PathBuf;
 
 use clap::builder::{BoolishValueParser, FalseyValueParser};
 
+#[allow(
+    missing_docs,
+    reason = "do not override description (which clap) generated from package.description in Cargo.toml"
+)]
 #[derive(clap::Parser, Debug)]
 #[command(name = "arduino-compile-sketches", version, about, long_about)]
 pub struct CliArgs {
@@ -87,6 +91,8 @@ pub struct CliArgs {
     pub enable_deltas_report: bool,
 
     /// Enable reports about compilation warnings.
+    ///
+    /// Requires arduino-cli v0.14.0-rc.1 or later.
     #[arg(
         env = "INPUT_ENABLE-WARNINGS-REPORT",
         short = 'w',
