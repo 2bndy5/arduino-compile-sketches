@@ -2,10 +2,7 @@
 //! of `adafruit/Adafruit-MCP23017-Arduino-Library` (PR #89).
 #![cfg(feature = "bin")]
 
-use arduino_compile_sketches::{
-    CompileSketches, logger,
-    serde_types::{Dependencies, DownloadEntry, ManagerEntry, PathEntry, RepoEntry},
-};
+use arduino_compile_sketches::{CompileSketches, logger};
 use std::{
     env,
     fs::{self, File},
@@ -39,11 +36,11 @@ fn to_posix_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn run_git(current_dir: &Path, args: &[&str], use_ci_identity: bool, task: &str) {
+fn run_git(current_dir: &Path, args: &[&str], task: &str) {
     let mut cmd = Command::new("git");
     log::info!("Using git to {task}: git {}", args.join(" "));
     cmd.current_dir(current_dir).args(args);
-    if use_ci_identity && env::var("CI").is_ok_and(|v| v == "true") {
+    if env::var("CI").is_ok_and(|v| v == "true") {
         cmd.env("GIT_AUTHOR_NAME", "ci-test")
             .env("GIT_AUTHOR_EMAIL", "ci@example.invalid")
             .env("GIT_COMMITTER_NAME", "ci-test")
@@ -57,7 +54,7 @@ fn run_git(current_dir: &Path, args: &[&str], use_ci_identity: bool, task: &str)
     );
 }
 
-fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
+fn ensure_head_cache(repo: &str, base_sha: &str, head_sha: &str) -> PathBuf {
     let cache_root = env::temp_dir()
         .join("arduino-compile-sketches-tests")
         .join("repo-cache")
@@ -86,41 +83,45 @@ fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
         run_git(
             &cache_root,
             &["clone", &repo_url, repo_dir.to_string_lossy().as_ref()],
-            false,
             "clone cached test repository",
         );
     }
 
+    // Always fetch both the head and the base commit so delta comparisons
+    // can be performed even when only a shallow cache exists.
+    if base_sha != head_sha {
+        run_git(
+            &repo_dir,
+            &["fetch", "origin", base_sha, "--depth", "3"],
+            "fetch cached base commit",
+        );
+    }
     run_git(
         &repo_dir,
-        &["fetch", "origin", head_sha, "--depth", "1"],
-        false,
+        &["fetch", "origin", head_sha, "--depth", "3"],
         "fetch cached head commit",
     );
     run_git(
         &repo_dir,
         &["checkout", "-f", head_sha],
-        false,
         "checkout cached head commit",
     );
 
     repo_dir
 }
 
-fn clone_cached_head_workspace(repo: &str, head_sha: &str) -> TempDir {
-    let repo_dir = ensure_head_cache(repo, head_sha);
+fn clone_cached_head_workspace(repo: &str, base_sha: &str, head_sha: &str) -> TempDir {
+    let repo_dir = ensure_head_cache(repo, base_sha, head_sha);
     let workspace = TempDir::new().expect("create temp dir for workspace clone");
 
     run_git(
         workspace.path(),
         &["clone", repo_dir.to_string_lossy().as_ref(), "."],
-        false,
         "clone workspace from local cache",
     );
     run_git(
         workspace.path(),
         &["checkout", "-f", head_sha],
-        false,
         "checkout workspace head commit",
     );
 
@@ -154,19 +155,12 @@ fn create_local_repo_lib() -> LocalGitRepo {
     run_git(
         work.path(),
         &["init", "--initial-branch=main"],
-        false,
         "init test library repo",
     );
-    run_git(
-        work.path(),
-        &["add", "."],
-        false,
-        "add test library repo files",
-    );
+    run_git(work.path(), &["add", "."], "add test library repo files");
     run_git(
         work.path(),
         &["commit", "-m", "init"],
-        true,
         "commit test library repo files",
     );
 
@@ -180,7 +174,6 @@ fn create_local_repo_lib() -> LocalGitRepo {
             work.path().to_string_lossy().as_ref(),
             bare_repo_path.to_string_lossy().as_ref(),
         ],
-        false,
         "clone bare test library repo",
     );
 
@@ -213,19 +206,12 @@ fn create_local_repo_platform() -> LocalGitRepo {
     run_git(
         work.path(),
         &["init", "--initial-branch=main"],
-        false,
         "init test platform repo",
     );
-    run_git(
-        work.path(),
-        &["add", "."],
-        false,
-        "add test platform repo files",
-    );
+    run_git(work.path(), &["add", "."], "add test platform repo files");
     run_git(
         work.path(),
         &["commit", "-m", "init"],
-        true,
         "commit test platform repo files",
     );
 
@@ -239,7 +225,6 @@ fn create_local_repo_platform() -> LocalGitRepo {
             work.path().to_string_lossy().as_ref(),
             bare_repo_path.to_string_lossy().as_ref(),
         ],
-        false,
         "clone bare test platform repo",
     );
 
@@ -350,7 +335,7 @@ async fn run_compile_test(params: TestParams) {
     let sketch_paths: Vec<PathBuf>;
 
     if params.use_real_repo {
-        workspace_dir = clone_cached_head_workspace(TEST_REPO, HEAD_SHA);
+        workspace_dir = clone_cached_head_workspace(TEST_REPO, BASE_SHA, HEAD_SHA);
         sketch_paths = vec![
             workspace_dir.path().join(SKETCH_STABLE),
             workspace_dir.path().join(SKETCH_MODIFIED),
@@ -438,7 +423,7 @@ async fn run_compile_test(params: TestParams) {
     } else {
         fs::write(
             &event_path,
-            r#"{"before":"0000000000000000000000000000000000000000"}"#,
+            serde_json::json!({"before":BASE_SHA}).to_string(),
         )
         .unwrap();
     }
@@ -446,15 +431,9 @@ async fn run_compile_test(params: TestParams) {
     // ── 5. Build INPUT_* YAML values ──────────────────────────────────────────
     let report_dir = TempDir::new().unwrap();
     let mut libraries_yaml = Vec::new();
-    let mut libraries = Dependencies::default();
 
     if params.use_manager_lib {
         libraries_yaml.push("name: Adafruit BusIO".to_string());
-        libraries.manager.push(ManagerEntry {
-            name: "Adafruit BusIO".to_string(),
-            version: None,
-            source_url: None,
-        });
     }
 
     if params.use_path_lib {
@@ -465,10 +444,6 @@ async fn run_compile_test(params: TestParams) {
             "source-path: {}\n  name: PathLib",
             to_posix_path(&path_lib)
         ));
-        libraries.path.push(PathEntry {
-            source_path: to_posix_path(&path_lib),
-            name: Some("PathLib".to_string()),
-        });
     }
 
     if let Some(ref repo_dir) = repo_lib_dir {
@@ -476,33 +451,26 @@ async fn run_compile_test(params: TestParams) {
             "source-url: {}\n  destination-name: RepoLib_{unique_suffix}",
             repo_dir.source_url
         ));
-        libraries.repository.push(RepoEntry {
-            source_url: repo_dir.source_url.clone(),
-            version: None,
-            source_path: None,
-            destination_name: Some(format!("RepoLib_{unique_suffix}")),
-        });
     }
 
     if params.use_download_lib {
         let url = format!("{}/download-lib.zip", mock_server.url());
         libraries_yaml.push(format!("source-url: {url}"));
-        libraries.download.push(DownloadEntry {
-            source_url: url,
-            source_path: None,
-            destination_name: None,
-        });
+    }
+
+    // If we're compiling examples from a cloned repo workspace, expose that
+    // workspace root as a path-library so example `#include`/library resolution
+    // can find the library sources in-tree.
+    if params.use_real_repo {
+        let ws_path = to_posix_path(workspace_dir.path());
+        libraries_yaml.push(format!(
+            "source-path: {ws_path}\n  name: RepoWorkspace_{unique_suffix}"
+        ));
     }
 
     let mut platforms_yaml = Vec::new();
-    let mut platforms = Dependencies::default();
     if params.manager_platform {
         platforms_yaml.push("name: arduino:avr".to_string());
-        platforms.manager.push(ManagerEntry {
-            name: "arduino:avr".to_string(),
-            version: None,
-            source_url: None,
-        });
     }
 
     if let Some(ref platform_dir) = path_platform_dir {
@@ -510,10 +478,6 @@ async fn run_compile_test(params: TestParams) {
         platforms_yaml.push(format!(
             "source-path: {source_path}\n  name: test-path_{unique_suffix}:arch"
         ));
-        platforms.path.push(PathEntry {
-            source_path,
-            name: Some(format!("test-path_{unique_suffix}:arch")),
-        });
     }
 
     if let Some(ref platform_dir) = repo_platform_dir {
@@ -521,12 +485,6 @@ async fn run_compile_test(params: TestParams) {
             "source-url: {}\n  name: test-repo_{unique_suffix}:arch",
             platform_dir.source_url
         ));
-        platforms.repository.push(RepoEntry {
-            source_url: platform_dir.source_url.clone(),
-            version: None,
-            source_path: None,
-            destination_name: Some(format!("test-repo_{unique_suffix}:arch")),
-        });
     }
 
     if params.use_download_platform {
@@ -534,11 +492,6 @@ async fn run_compile_test(params: TestParams) {
         platforms_yaml.push(format!(
             "source-url: {url}\n  destination-name: test-dl_{unique_suffix}:arch"
         ));
-        platforms.download.push(DownloadEntry {
-            source_url: url,
-            source_path: None,
-            destination_name: Some(format!("test-dl_{unique_suffix}:arch")),
-        });
     }
 
     let sketch_paths_yaml = to_yaml_list(

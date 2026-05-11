@@ -9,3 +9,6 @@ failure-output = "final"
 [[profile.default.overrides]]
 filter = "test(#adafruit_mcp23017::*)"
 slow-timeout = { period = "300s", terminate-after = 2 }
+
+[profile.debug]
+success-output = "final"

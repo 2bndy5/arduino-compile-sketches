@@ -112,7 +112,6 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 name = "arduino-compile-sketches"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "arduino-report-size-deltas",
  "clap",
  "colored",
@@ -135,9 +134,9 @@ dependencies = [
 
 [[package]]
 name = "arduino-report-size-deltas"
-version = "1.0.6"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c74cd87ddf101b018a89d6239b9270abf078a948e2c344d3e32a14ae9523f62e"
+checksum = "d7426856ddae2462a2e49674736e7fccab6af0a26d19280813e1c4cf911ed242"
 dependencies = [
  "log",
  "serde",

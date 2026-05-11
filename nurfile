@@ -28,7 +28,7 @@ def "nur test" [
         [cargo llvm-cov --no-report nextest --features bin]
         | append [--color always --profile $profile]
     )
-    with-env {ARDUINO_COMPILE_SKETCHES: "INTEGRATION TESTS SKIP CLI ARGS"} {
+    with-env {ARDUINO_COMPILE_SKETCHES: "INTEGRATION TESTS SKIP CLI ARGS", FORCE_COLOR: "1"} {
         run-cmd ...$cmd
     }
 }

@@ -1,5 +1,4 @@
-use anyhow::Result;
-use arduino_compile_sketches::{driver::CompileSketches, logger};
+use arduino_compile_sketches::{driver::CompileSketches, error::Result, logger};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,6 +16,8 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use arduino_compile_sketches::CompileSketchesError;
+
     use super::main;
     use std::{env, fs};
 
@@ -25,15 +26,13 @@ mod tests {
         let tmp_dir = tempfile::TempDir::with_prefix("arduino-compile-sketches-bin-tests").unwrap();
         let ws = tmp_dir.path().to_path_buf();
 
-        // Create a minimal sketch
-        let sketch_dir = ws.join("example_sketch");
-        fs::create_dir_all(&sketch_dir).unwrap();
-        let mut sketch = String::from("void setup() {}\nvoid loop() {}\n");
-        if verbose {
-            // use this to differentiate caches created by the arduino-cli.
-            sketch.push_str("void verbose() {}");
+        if !verbose {
+            // Create a minimal sketch
+            let sketch_dir = ws.join("example_sketch");
+            fs::create_dir_all(&sketch_dir).unwrap();
+            let sketch = String::from("void setup() {}\nvoid loop() {}\n");
+            fs::write(sketch_dir.join("example_sketch.ino"), &sketch).unwrap();
         }
-        fs::write(sketch_dir.join("example_sketch.ino"), &sketch).unwrap();
 
         unsafe {
             env::set_var("GITHUB_REPOSITORY", "2bndy5/arduino-compile-sketches");
@@ -55,7 +54,20 @@ mod tests {
         }
 
         // Run a single compile to exercise the fake CLI shim
-        main().unwrap();
+        let result = main();
+        if !verbose {
+            assert!(
+                result.is_ok(),
+                "Expected compilation to succeed, got error: {result:?}"
+            );
+        } else {
+            assert!(
+                result
+                    .as_ref()
+                    .is_err_and(|e| matches!(e, CompileSketchesError::NoSketchesFound)),
+                "Expected NoSketchesFound error. Got: {result:?}"
+            );
+        }
     }
 
     #[test]

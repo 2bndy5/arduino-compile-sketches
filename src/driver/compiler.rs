@@ -5,9 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Debug)]
 pub(super) enum CompileRef {
     Head,
-    Base(String),
+    Base,
 }
 
 pub(super) struct CompileTaskEnvelope {
@@ -16,12 +17,19 @@ pub(super) struct CompileTaskEnvelope {
 }
 
 #[derive(Debug)]
-pub(super) struct CompilationTaskResult {
-    pub(super) relative_sketch_path: String,
-    pub(super) output: String,
-    pub(super) success: bool,
-    pub(super) invoked_cmd: String,
-    pub(super) duration: Duration,
+pub(super) enum CompilationTaskResult {
+    Ok {
+        relative_sketch_path: String,
+        output: String,
+        success: bool,
+        invoked_cmd: String,
+        duration: Duration,
+    },
+    Err {
+        relative_sketch_path: String,
+        error: CompileSketchesError,
+        duration: Duration,
+    },
 }
 
 /// A struct to distribute commonly used resources during parallel compilation.
@@ -63,83 +71,89 @@ pub(super) struct CompilationResult {
     pub(super) invoked_cmd: String,
 }
 
-pub(super) fn checkout_base_ref(
-    base_ref: &str,
-    repo: &str,
-) -> Result<Option<(tempfile::TempDir, PathBuf)>> {
+pub(super) struct BaseRefCheckout {
+    pub base_ref: String,
+    pub temp_dir: tempfile::TempDir,
+}
+
+pub(super) fn checkout_base_ref(base_ref: &str, repo: &str) -> Result<Option<BaseRefCheckout>> {
     let repo_url = format!("https://github.com/{repo}.git");
 
     let tmp = tempfile::tempdir()?;
-    let tmp_path = tmp.path().to_path_buf();
-    let tmp_path_string = tmp_path.to_string_lossy().to_string();
-
-    let clone_status = Command::new("git")
+    let tmp_path = tmp.path();
+    // Try a shallow clone of the specific ref into the temp dir.
+    if let Ok(status) = Command::new("git")
         .args([
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            base_ref,
-            &repo_url,
-            tmp_path_string.as_str(),
+            "clone", "--depth", "1", "--branch", base_ref, &repo_url, ".",
         ])
-        .status();
-
-    let cloned = match clone_status {
-        Ok(status) if status.success() => true,
-        _ => {
-            let clone_status = Command::new("git")
-                .args(["clone", &repo_url, tmp_path_string.as_str()])
-                .status()
-                .map_err(|source| CompileSketchesError::GitCommandIo {
-                    task: "clone repository",
-                    source,
-                });
-            match clone_status {
-                Ok(status) if status.success() => {
-                    let checkout_status = Command::new("git")
-                        .current_dir(&tmp_path)
-                        .args(["checkout", base_ref])
-                        .status()
-                        .map_err(|source| CompileSketchesError::GitCommandIo {
-                            task: "checkout base ref",
-                            source,
-                        });
-                    matches!(checkout_status, Ok(status) if status.success())
-                }
-                _ => false,
-            }
+        .current_dir(tmp_path)
+        .status()
+    {
+        if status.success() {
+            return Ok(Some(BaseRefCheckout {
+                base_ref: base_ref.to_string(),
+                temp_dir: tmp,
+            }));
+        } else {
+            log::warn!("Shallow clone of ref '{base_ref}' failed with status: {status}.");
         }
-    };
-
-    if cloned {
-        Ok(Some((tmp, tmp_path)))
-    } else {
-        Ok(None)
     }
+
+    log::warn!("Falling back to full clone of base ref.");
+    // Fall back to a full clone and an explicit fetch+checkout of the base ref.
+    if let Ok(status) = Command::new("git")
+        .args(["clone", &repo_url, "."])
+        .current_dir(tmp_path)
+        .status()
+        && status.success()
+    {
+        let _ = Command::new("git")
+            .current_dir(tmp_path)
+            .args(["fetch", "origin", base_ref, "--depth", "1"])
+            .status();
+        if let Ok(co_status) = Command::new("git")
+            .current_dir(tmp_path)
+            .args(["checkout", base_ref])
+            .status()
+            && co_status.success()
+        {
+            return Ok(Some(BaseRefCheckout {
+                base_ref: base_ref.to_string(),
+                temp_dir: tmp,
+            }));
+        }
+    }
+
+    Ok(None)
 }
 
 pub(super) fn compile_sketch_task(
     compiler: SketchCompiler,
     sketch: PathBuf,
     relative_sketch_path: String,
-) -> Result<CompilationTaskResult> {
+) -> CompilationTaskResult {
     let instant = Instant::now();
-    let result = compiler.compile_sketch(&sketch)?;
-
-    Ok(CompilationTaskResult {
-        relative_sketch_path,
-        output: result.output,
-        success: result.success,
-        invoked_cmd: result.invoked_cmd,
-        duration: instant.elapsed(),
-    })
+    let result = compiler.compile_sketch(&sketch);
+    let elapsed = instant.elapsed();
+    match result {
+        Ok(result) => CompilationTaskResult::Ok {
+            relative_sketch_path,
+            output: result.output,
+            success: result.success,
+            invoked_cmd: result.invoked_cmd,
+            duration: elapsed,
+        },
+        Err(error) => CompilationTaskResult::Err {
+            relative_sketch_path,
+            error,
+            duration: elapsed,
+        },
+    }
 }
 
 impl SketchCompiler {
     pub(super) fn compile_sketch(&self, sketch_path: &Path) -> Result<CompilationResult> {
-        let mut cmd =
-            self.build_cli_command(&["compile", "--warnings", "all", "--fqbn", &self.fqbn])?;
+        let mut cmd = self.build_cli_command(&["compile", "--fqbn", &self.fqbn])?;
         cmd.arg(sketch_path);
         if !self.cli_compile_flags.is_empty() {
             for f in &self.cli_compile_flags {
@@ -150,10 +164,13 @@ impl SketchCompiler {
             cmd.arg("--verbose");
         }
         if self.enable_warnings_report {
-            // requires arduino-cli v0.14.0-rc.1
-            // This is done so that reusing the build cache does not hide any old warnings
-            cmd.arg("--clean");
+            // `--clean` requires arduino-cli v0.14.0-rc.1
+            // `--clean` is used so that reusing the build cache does not hide any old warnings
+            cmd.args(["--clean", "--warnings", "all"]);
         }
+        // NOTE: I believe any user-provided `--warnings` options will override the above
+        // `--warnings all` passed when `enable_warnings_report` is enabled.
+        // This could be used as a filter for the counted warnings, if desirable.
         let invoked_command = format!(
             "{} {}",
             cmd.get_program().to_string_lossy(),

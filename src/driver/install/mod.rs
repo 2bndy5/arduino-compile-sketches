@@ -43,14 +43,15 @@ impl CompileSketches {
         let cache_base = directories::ProjectDirs::from("org", "arduino", "compile-sketches")
             .map(|project_dir| project_dir.cache_dir().to_path_buf())
             .unwrap_or_else(|| PathBuf::from(".").join(".arduino-compile-sketches_cache"));
+        let lock_file_path = cache_base.join(".lock");
+        let lock_file = fs::File::create(&lock_file_path)?;
+        lock_file.lock()?;
+
         let install_dir = cache_base.join(format!("arduino-cli_{version}"));
 
         if !install_dir.exists() {
             fs::create_dir_all(&install_dir)?;
         }
-        let lock_file_path = cache_base.join(".lock");
-        let lock_file = fs::File::create(&lock_file_path)?;
-        lock_file.lock()?;
 
         let bin_path = install_dir.join(bin_name);
         let ver_is_latest = version.eq_ignore_ascii_case("latest");
