@@ -7,7 +7,9 @@ words:
   - Boolish
   - clippy
   - cooldown
+  - endfor
   - endgroup
+  - endmacro
   - Falsey
   - flate
   - FQBN
@@ -26,6 +28,7 @@ words:
   - startswith
   - thiserror
   - tlsv
+  - topo
   - zizmor
 ignorePaths:
   - .gitattributes
