@@ -3,6 +3,7 @@
 #![cfg(feature = "bin")]
 
 use arduino_compile_sketches::{CompileSketches, logger};
+use arduino_report_size_deltas::report_structs::{Report, SizeValue, SketchSizeKind};
 use std::{
     env,
     fs::{self, File},
@@ -39,7 +40,9 @@ fn to_posix_path(path: &Path) -> String {
 fn run_git(current_dir: &Path, args: &[&str], task: &str) {
     let mut cmd = Command::new("git");
     log::info!("Using git to {task}: git {}", args.join(" "));
-    cmd.current_dir(current_dir).args(args);
+    cmd.current_dir(current_dir)
+        .args(["-c", "advice.detachedHead=false"])
+        .args(args);
     if env::var("CI").is_ok_and(|v| v == "true") {
         cmd.env("GIT_AUTHOR_NAME", "ci-test")
             .env("GIT_AUTHOR_EMAIL", "ci@example.invalid")
@@ -54,11 +57,12 @@ fn run_git(current_dir: &Path, args: &[&str], task: &str) {
     );
 }
 
-fn ensure_head_cache(repo: &str, base_sha: &str, head_sha: &str) -> PathBuf {
+fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
     let cache_root = env::temp_dir()
         .join("arduino-compile-sketches-tests")
         .join("repo-cache")
-        .join(repo.replace('/', "_"));
+        // only use the repo name as cache dir name; otherwise "adafruit" would appear twice in the same dir name.
+        .join(repo.split_once('/').unwrap().1);
     fs::create_dir_all(&cache_root).expect("create cache root");
 
     let lock_path = cache_root.join("cache.lock");
@@ -72,9 +76,8 @@ fn ensure_head_cache(repo: &str, base_sha: &str, head_sha: &str) -> PathBuf {
     lock_file.lock().expect("lock cache lock file");
 
     let repo_dir = cache_root.join("repo");
-    let git_dir = repo_dir.join(".git");
     let repo_url = format!("https://github.com/{repo}.git");
-    if !git_dir.exists() {
+    if !repo_dir.exists() {
         if let Err(source) = fs::remove_dir_all(&repo_dir)
             && source.kind() != ErrorKind::NotFound
         {
@@ -82,36 +85,36 @@ fn ensure_head_cache(repo: &str, base_sha: &str, head_sha: &str) -> PathBuf {
         }
         run_git(
             &cache_root,
-            &["clone", &repo_url, repo_dir.to_string_lossy().as_ref()],
+            &[
+                "clone",
+                &repo_url,
+                repo_dir.to_string_lossy().as_ref(),
+                "--depth",
+                "3",
+                "--revision",
+                head_sha,
+                "--recurse-submodules",
+                "--shallow-submodules",
+            ],
             "clone cached test repository",
         );
-    }
-
-    // Always fetch both the head and the base commit so delta comparisons
-    // can be performed even when only a shallow cache exists.
-    if base_sha != head_sha {
+    } else {
         run_git(
             &repo_dir,
-            &["fetch", "origin", base_sha, "--depth", "3"],
-            "fetch cached base commit",
+            &["fetch", "origin", head_sha, "--depth", "3"],
+            "fetch cached head commit",
+        );
+        run_git(
+            &repo_dir,
+            &["checkout", "-f", head_sha],
+            "checkout cached head commit",
         );
     }
-    run_git(
-        &repo_dir,
-        &["fetch", "origin", head_sha, "--depth", "3"],
-        "fetch cached head commit",
-    );
-    run_git(
-        &repo_dir,
-        &["checkout", "-f", head_sha],
-        "checkout cached head commit",
-    );
-
     repo_dir
 }
 
-fn clone_cached_head_workspace(repo: &str, base_sha: &str, head_sha: &str) -> TempDir {
-    let repo_dir = ensure_head_cache(repo, base_sha, head_sha);
+fn clone_cached_head_workspace(repo: &str, head_sha: &str) -> TempDir {
+    let repo_dir = ensure_head_cache(repo, head_sha);
     let workspace = TempDir::new().expect("create temp dir for workspace clone");
 
     run_git(
@@ -236,7 +239,7 @@ fn create_local_repo_platform() -> LocalGitRepo {
 }
 
 fn zip_dir_recursive(
-    zip: &mut zip::ZipWriter<std::io::Cursor<Vec<u8>>>,
+    archive: &mut zip::ZipWriter<std::io::Cursor<Vec<u8>>>,
     root: &Path,
     dir: &Path,
     top_name: &str,
@@ -246,7 +249,7 @@ fn zip_dir_recursive(
         let entry = entry.expect("read fixture entry");
         let path = entry.path();
         if path.is_dir() {
-            zip_dir_recursive(zip, root, &path, top_name);
+            zip_dir_recursive(archive, root, &path, top_name);
             continue;
         }
 
@@ -256,19 +259,20 @@ fn zip_dir_recursive(
             .to_string_lossy()
             .replace('\\', "/");
         let zip_path = format!("{top_name}/{rel}");
-        zip.start_file(zip_path, zip::write::SimpleFileOptions::default())
+        archive
+            .start_file(zip_path, zip::write::SimpleFileOptions::default())
             .expect("start zip file");
         let bytes = fs::read(&path).expect("read fixture file");
-        zip.write_all(&bytes).expect("write zip file");
+        archive.write_all(&bytes).expect("write zip file");
     }
 }
 
 /// Pack `src_dir` into an in-memory `.zip` with a single top-level folder.
 fn build_zip(src_dir: &Path, top_name: &str) -> Vec<u8> {
     let cursor = std::io::Cursor::new(Vec::new());
-    let mut zip = zip::ZipWriter::new(cursor);
-    zip_dir_recursive(&mut zip, src_dir, src_dir, top_name);
-    zip.finish().expect("finish zip").into_inner()
+    let mut archive = zip::ZipWriter::new(cursor);
+    zip_dir_recursive(&mut archive, src_dir, src_dir, top_name);
+    archive.finish().expect("finish zip").into_inner()
 }
 
 /// Build a GitHub `pull_request` event payload JSON string.
@@ -293,6 +297,7 @@ fn to_yaml_list(items: &[String]) -> String {
 
 // ── TestParams + driver ───────────────────────────────────────────────────────
 
+#[derive(Debug, Default)]
 struct TestParams {
     fqbn: &'static str,
     /// Install `arduino:avr` via the board manager.
@@ -335,7 +340,7 @@ async fn run_compile_test(params: TestParams) {
     let sketch_paths: Vec<PathBuf>;
 
     if params.use_real_repo {
-        workspace_dir = clone_cached_head_workspace(TEST_REPO, BASE_SHA, HEAD_SHA);
+        workspace_dir = clone_cached_head_workspace(TEST_REPO, HEAD_SHA);
         sketch_paths = vec![
             workspace_dir.path().join(SKETCH_STABLE),
             workspace_dir.path().join(SKETCH_MODIFIED),
@@ -563,14 +568,11 @@ async fn run_compile_test(params: TestParams) {
         "report JSON not written to {report_file:?}"
     );
 
-    let report: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&report_file).unwrap())
-            .expect("parse report JSON");
+    let report_data = fs::read_to_string(report_file).unwrap();
+    let report: Report = serde_json::from_str(&report_data)
+        .unwrap_or_else(|e| panic!("failed to parse report JSON data: {e:?}\n{report_data}"));
 
-    let sketches = report["boards"][0]["sketches"]
-        .as_array()
-        .expect("boards[0].sketches is an array");
-
+    let sketches = &report.boards[0].sketches;
     assert_eq!(
         sketches.len(),
         params.expected_sketch_count,
@@ -581,18 +583,22 @@ async fn run_compile_test(params: TestParams) {
     // confirming the base-ref compilation was matched and merged into deltas.
     if params.is_pr && params.enable_deltas {
         let any_sizes = sketches.iter().any(|sketch| {
-            sketch["sizes"]
-                .as_array()
-                .is_some_and(|sizes| !sizes.is_empty())
+            sketch.sizes.iter().any(|size| {
+                size.get_size()
+                    .delta
+                    .as_ref()
+                    .is_some_and(|d| matches!(d.absolute, SizeValue::Known(_)))
+            })
         });
         let found_previous = sketches.iter().any(|sketch| {
-            sketch["sizes"].as_array().is_some_and(|sizes| {
-                sizes.iter().any(|size| {
-                    size["name"]
-                        .as_str()
-                        .is_some_and(|n| n.to_ascii_lowercase().contains("flash"))
-                        && size["previous"].is_object()
-                })
+            sketch.sizes.iter().any(|size_kind| {
+                if let SketchSizeKind::Flash { size } = size_kind
+                    && size.previous.is_some()
+                {
+                    true
+                } else {
+                    false
+                }
             })
         });
 
@@ -609,190 +615,113 @@ async fn run_compile_test(params: TestParams) {
 
 /// Happy path: all 4 library dependency types, PR event with delta report.
 #[tokio::test]
-async fn test_all_lib_types_pr_delta() {
+async fn all_lib_types_pr_delta() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        use_path_platform: false,
-        use_repo_platform: false,
-        use_download_platform: false,
         use_manager_lib: true,
         use_path_lib: true,
         use_repo_lib: true,
         use_download_lib: true,
         use_real_repo: true,
-        include_bad_sketch: false,
         is_pr: true,
         enable_deltas: true,
-        fail_on_compile_error: false,
-        expect_err: false,
         expected_sketch_count: 2,
+        ..Default::default()
     })
     .await;
 }
 
 /// Push event, no delta report, manager library only.
 #[tokio::test]
-async fn test_push_no_delta() {
+async fn push_no_delta() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        use_path_platform: false,
-        use_repo_platform: false,
-        use_download_platform: false,
         use_manager_lib: true,
-        use_path_lib: false,
-        use_repo_lib: false,
-        use_download_lib: false,
         use_real_repo: true,
-        include_bad_sketch: false,
-        is_pr: false,
-        enable_deltas: false,
-        fail_on_compile_error: false,
-        expect_err: false,
         expected_sketch_count: 2,
+        ..Default::default()
     })
     .await;
 }
 
 /// A bogus FQBN causes compilation to fail; `fail_on_compile_error` propagates that as Err.
 #[tokio::test]
-async fn test_invalid_fqbn_fails() {
+async fn invalid_fqbn_fails() {
     run_compile_test(TestParams {
         fqbn: "bogus:fake:board",
         manager_platform: false, // unknown vendor – nothing to install
-        use_path_platform: false,
-        use_repo_platform: false,
-        use_download_platform: false,
-        use_manager_lib: false,
-        use_path_lib: false,
-        use_repo_lib: false,
-        use_download_lib: false,
-        use_real_repo: false,
-        include_bad_sketch: false,
-        is_pr: false,
-        enable_deltas: false,
         fail_on_compile_error: true,
         expect_err: true,
-        expected_sketch_count: 0,
+        ..Default::default()
     })
     .await;
 }
 
 /// A sketch with `#error` fails and `fail_on_compile_error = true` propagates as Err.
 #[tokio::test]
-async fn test_compile_error_respected() {
+async fn compile_error_respected() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        use_path_platform: false,
-        use_repo_platform: false,
-        use_download_platform: false,
-        use_manager_lib: false,
-        use_path_lib: false,
-        use_repo_lib: false,
-        use_download_lib: false,
-        use_real_repo: false,
         include_bad_sketch: true,
-        is_pr: false,
-        enable_deltas: false,
         fail_on_compile_error: true,
         expect_err: true,
-        expected_sketch_count: 0,
+        ..Default::default()
     })
     .await;
 }
 
-/// Same bad sketch, but `fail_on_compile_error = false` → succeeds and writes report.
+/// Same bad sketch, but `fail_on_compile_error = false` -> succeeds and writes report.
 /// The good sketch still shows up in the report; the bad one has `compilation_success: false`.
 #[tokio::test]
-async fn test_compile_error_ignored() {
+async fn compile_error_ignored() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        use_path_platform: false,
-        use_repo_platform: false,
-        use_download_platform: false,
-        use_manager_lib: false,
-        use_path_lib: false,
-        use_repo_lib: false,
-        use_download_lib: false,
-        use_real_repo: false,
         include_bad_sketch: true,
-        is_pr: false,
-        enable_deltas: false,
-        fail_on_compile_error: false,
-        expect_err: false,
         expected_sketch_count: 2, // good_sketch + bad_sketch both appear in report
+        ..Default::default()
     })
     .await;
 }
 
 #[tokio::test]
-async fn test_platform_path_dependency() {
+async fn platform_path_dependency() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
         use_path_platform: true,
-        use_repo_platform: false,
-        use_download_platform: false,
-        use_manager_lib: false,
-        use_path_lib: false,
-        use_repo_lib: false,
-        use_download_lib: false,
         use_real_repo: true,
-        include_bad_sketch: false,
-        is_pr: false,
-        enable_deltas: false,
-        fail_on_compile_error: false,
-        expect_err: false,
         expected_sketch_count: 2,
+        ..Default::default()
     })
     .await;
 }
 
 #[tokio::test]
-async fn test_platform_repo_dependency() {
+async fn platform_repo_dependency() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        use_path_platform: false,
         use_repo_platform: true,
-        use_download_platform: false,
-        use_manager_lib: false,
-        use_path_lib: false,
-        use_repo_lib: false,
-        use_download_lib: false,
         use_real_repo: true,
-        include_bad_sketch: false,
-        is_pr: false,
-        enable_deltas: false,
-        fail_on_compile_error: false,
-        expect_err: false,
         expected_sketch_count: 2,
+        ..Default::default()
     })
     .await;
 }
 
 #[tokio::test]
-async fn test_platform_download_dependency() {
+async fn platform_download_dependency() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        use_path_platform: false,
-        use_repo_platform: false,
         use_download_platform: true,
-        use_manager_lib: false,
-        use_path_lib: false,
-        use_repo_lib: false,
-        use_download_lib: false,
         use_real_repo: true,
-        include_bad_sketch: false,
-        is_pr: false,
-        enable_deltas: false,
-        fail_on_compile_error: false,
-        expect_err: false,
         expected_sketch_count: 2,
+        ..Default::default()
     })
     .await;
 }

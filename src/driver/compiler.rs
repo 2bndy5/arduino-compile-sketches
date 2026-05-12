@@ -1,4 +1,13 @@
-use crate::error::{CompileSketchesError, Result};
+use tokio::task::JoinSet;
+
+use super::report::{get_sizes_from_output, get_warning_count_from_output};
+use crate::{
+    CompileSketches,
+    error::{CompileSketchesError, Result},
+    utils::fmt_duration,
+};
+use arduino_report_size_deltas::report_structs::{Sketch, SketchSize, SketchSizeKind};
+
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -84,47 +93,30 @@ pub(super) fn checkout_base_ref(base_ref: &str, repo: &str) -> Result<Option<Bas
     // Try a shallow clone of the specific ref into the temp dir.
     if let Ok(status) = Command::new("git")
         .args([
-            "clone", "--depth", "1", "--branch", base_ref, &repo_url, ".",
+            "-c",
+            "advice.detachedHead=false",
+            "clone",
+            "--recurse-submodules",
+            "--shallow-submodules",
+            "--depth",
+            "1",
+            "--revision",
+            base_ref,
+            &repo_url,
+            ".",
         ])
-        .current_dir(tmp_path)
-        .status()
-    {
-        if status.success() {
-            return Ok(Some(BaseRefCheckout {
-                base_ref: base_ref.to_string(),
-                temp_dir: tmp,
-            }));
-        } else {
-            log::warn!("Shallow clone of ref '{base_ref}' failed with status: {status}.");
-        }
-    }
-
-    log::warn!("Falling back to full clone of base ref.");
-    // Fall back to a full clone and an explicit fetch+checkout of the base ref.
-    if let Ok(status) = Command::new("git")
-        .args(["clone", &repo_url, "."])
         .current_dir(tmp_path)
         .status()
         && status.success()
     {
-        let _ = Command::new("git")
-            .current_dir(tmp_path)
-            .args(["fetch", "origin", base_ref, "--depth", "1"])
-            .status();
-        if let Ok(co_status) = Command::new("git")
-            .current_dir(tmp_path)
-            .args(["checkout", base_ref])
-            .status()
-            && co_status.success()
-        {
-            return Ok(Some(BaseRefCheckout {
-                base_ref: base_ref.to_string(),
-                temp_dir: tmp,
-            }));
-        }
+        return Ok(Some(BaseRefCheckout {
+            base_ref: base_ref.to_string(),
+            temp_dir: tmp,
+        }));
+    } else {
+        log::warn!("Shallow clone of ref '{base_ref}' failed.");
+        Ok(None)
     }
-
-    Ok(None)
 }
 
 pub(super) fn compile_sketch_task(
@@ -220,5 +212,128 @@ impl SketchCompiler {
             );
         }
         Ok(cmd)
+    }
+}
+
+impl CompileSketches {
+    pub(super) async fn join_tasks(
+        &self,
+        mut compile_jobs: JoinSet<CompileTaskEnvelope>,
+        base_ref_checkout: Option<BaseRefCheckout>,
+        sketch_count: usize,
+    ) -> Result<(Vec<Sketch>, Vec<Sketch>, bool)> {
+        let mut sketch_reports = Vec::with_capacity(sketch_count);
+        let mut base_sketch_reports = Vec::with_capacity(if base_ref_checkout.is_some() {
+            sketch_count
+        } else {
+            0
+        });
+        let mut all_compilations_successful = true;
+        while let Some(task_result) = compile_jobs.join_next().await {
+            let task_result = task_result?;
+
+            let base_ref_str = base_ref_checkout
+                .as_ref()
+                .and_then(|base| {
+                    if matches!(task_result.compile_ref, CompileRef::Base) {
+                        Some(format!(" (at base ref {})", base.base_ref))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_default();
+
+            match task_result {
+                CompileTaskEnvelope {
+                    compile_ref,
+                    result:
+                        CompilationTaskResult::Ok {
+                            relative_sketch_path,
+                            output,
+                            success,
+                            invoked_cmd,
+                            duration,
+                        },
+                } => {
+                    // task completed, so log it.
+                    log::info!(
+                        target: "CI_LOG_CMD",
+                        "::group::Compilation for {relative_sketch_path}{base_ref_str} with {invoked_cmd}",
+                    );
+                    if !success {
+                        log::error!(
+                            target: "CI_LOG_CMD",
+                            "::error::Compilation failed for {relative_sketch_path}{base_ref_str}",
+                        );
+                        if matches!(compile_ref, CompileRef::Head) {
+                            all_compilations_successful = false;
+                        }
+                        log::error!(target: "CI_LOG_CMD", "{output}");
+                    } else if self.sketch_compiler.verbose {
+                        log::debug!(target: "CI_LOG_CMD", "{output}");
+                    }
+                    log::info!(target: "CI_LOG_CMD", "::endgroup::");
+                    log::info!("Compilation time elapsed: {}", fmt_duration(&duration));
+
+                    // now extract data for reports
+                    let sizes = if success {
+                        get_sizes_from_output(&output)?
+                    } else {
+                        vec![
+                            SketchSizeKind::Ram {
+                                size: SketchSize::default(),
+                            },
+                            SketchSizeKind::Flash {
+                                size: SketchSize::default(),
+                            },
+                        ]
+                    };
+                    let warnings = if self.sketch_compiler.enable_warnings_report {
+                        Some(get_warning_count_from_output(&output)?)
+                    } else {
+                        None
+                    };
+
+                    let sketch = Sketch {
+                        name: relative_sketch_path,
+                        compilation_success: success,
+                        sizes,
+                        warnings,
+                    };
+                    if matches!(compile_ref, CompileRef::Base) {
+                        base_sketch_reports.push(sketch);
+                    } else {
+                        sketch_reports.push(sketch);
+                    }
+                }
+                CompileTaskEnvelope {
+                    compile_ref,
+                    result:
+                        CompilationTaskResult::Err {
+                            relative_sketch_path,
+                            error,
+                            duration,
+                        },
+                } => {
+                    // if task failed to execute (I/O problems): just log it and move on.
+                    log::info!(
+                        target: "CI_LOG_CMD",
+                        "::group::Compilation task failed for {relative_sketch_path}{base_ref_str}"
+                    );
+                    log::error!(target: "CI_LOG_CMD", "::error::{error}");
+                    if matches!(compile_ref, CompileRef::Head) {
+                        // overall compilation failure is not affected by any base ref compilations
+                        all_compilations_successful = false;
+                    }
+                    log::info!(target: "CI_LOG_CMD", "::endgroup::");
+                    log::info!("Compilation time elapsed: {}", fmt_duration(&duration));
+                }
+            }
+        }
+        Ok((
+            sketch_reports,
+            base_sketch_reports,
+            all_compilations_successful,
+        ))
     }
 }

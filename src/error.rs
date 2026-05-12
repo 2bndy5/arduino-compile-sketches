@@ -1,3 +1,5 @@
+use arduino_report_size_deltas::report_structs::Report;
+
 /// Error type that is returned when something went wrong.
 #[derive(Debug, thiserror::Error)]
 pub enum CompileSketchesError {
@@ -206,6 +208,12 @@ pub enum CompileSketchesError {
     /// An error that occurs when the archive format is unsupported.
     #[error("Unsupported Archive format: '{0}'")]
     ArchiveFormatUnsupported(String),
+
+    /// An error that occurs when a generated report does not have enough data to form usable feedback.
+    /// 
+    /// This happens when [`Report::is_valid()`] returns `false`.
+    #[error("The generated report did not have enough data to form usable feedback: {0:#?}")]
+    IncompleteReport(Report),
 }
 
 /// A convenient alias for `Result<T, CompileSketchesError>`.

@@ -1,4 +1,4 @@
-use arduino_report_size_deltas::report_structs::{Board, Report, Sketch};
+use arduino_report_size_deltas::report_structs::{Board, Report};
 use reqwest::Client;
 use std::{
     collections::HashSet,
@@ -7,25 +7,22 @@ use std::{
 };
 use tokio::task::JoinSet;
 
+use crate::serde_types::Dependencies;
 use crate::utils::{get_base_ref, get_head_ref, path_is_sketch, path_relative_to_workspace};
 use crate::{
     error::{CompileSketchesError, Result},
     utils::visit_dirs_recursive,
 };
-use crate::{serde_types::Dependencies, utils::fmt_duration};
 
 mod compiler;
 mod install;
 mod report;
 
-use self::compiler::{
-    CompilationTaskResult, CompileRef, CompileTaskEnvelope, checkout_base_ref, compile_sketch_task,
-};
+use self::compiler::{CompileRef, CompileTaskEnvelope, checkout_base_ref, compile_sketch_task};
 pub use compiler::SketchCompiler;
-use report::{
-    apply_base_report, get_board_sizes_from_summary, get_sizes_from_output,
-    get_sizes_summary_report, get_warning_count_from_output,
-};
+use report::{apply_base_report, get_board_sizes_from_summary, get_sizes_summary_report};
+
+const USER_AGENT: &str = concat!("arduino-compile-sketches/", env!("CARGO_PKG_VERSION"));
 
 /// Helper struct to provide default paths.
 pub struct DefaultPaths {
@@ -158,10 +155,7 @@ impl Default for CompileSketches {
             reason = "fn default() signature cannot return a Result"
         )]
         let client = reqwest::ClientBuilder::new()
-            .user_agent(concat!(
-                "arduino-compile-sketches/",
-                env!("CARGO_PKG_VERSION")
-            ))
+            .user_agent(USER_AGENT)
             .build()
             .expect("Failed to build HTTP client");
         Self {
@@ -191,11 +185,11 @@ impl CompileSketches {
         use std::collections::HashMap;
 
         let args = CliArgs::parse_from(
-            // compile-time only check for integration testing
+            // compile-time only: check for integration testing
             if option_env!("ARDUINO_COMPILE_SKETCHES")
                 .is_some_and(|v| v == "INTEGRATION TESTS SKIP CLI ARGS")
             {
-                vec![]
+                vec![] // don't parse args passed to cargo or cargo-nextest
             } else {
                 env::args().collect::<Vec<String>>()
             },
@@ -244,12 +238,7 @@ impl CompileSketches {
         let default_paths = DefaultPaths::default();
 
         // Build HTTP client with default User-Agent
-        let http_client = Client::builder()
-            .user_agent(concat!(
-                "arduino-compile-sketches/",
-                env!("CARGO_PKG_VERSION")
-            ))
-            .build()?;
+        let http_client = Client::builder().user_agent(USER_AGENT).build()?;
         let sketch_compiler = SketchCompiler {
             fqbn: args.fqbn,
             cli_compile_flags,
@@ -315,8 +304,6 @@ impl CompileSketches {
         };
 
         let mut compile_jobs = JoinSet::new();
-        let mut sketch_reports = Vec::with_capacity(sketch_count);
-        let mut base_sketch_reports = Vec::with_capacity(sketch_count);
 
         for sketch in sketches.into_iter() {
             let compiler = self.sketch_compiler.clone();
@@ -349,109 +336,23 @@ impl CompileSketches {
             }
         }
 
-        let mut all_compilations_successful = true;
-        while let Some(task_result) = compile_jobs.join_next().await {
-            let task_result = task_result?;
-
-            let base_ref_str = base_ref_checkout
-                .as_ref()
-                .and_then(|base| {
-                    if matches!(task_result.compile_ref, CompileRef::Base) {
-                        Some(format!(" (at base ref {})", base.base_ref))
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_default();
-
-            match task_result.result {
-                CompilationTaskResult::Ok {
-                    relative_sketch_path,
-                    output,
-                    success,
-                    invoked_cmd,
-                    duration,
-                } => {
-                    // task completed, so log it.
-                    log::info!(
-                        target: "CI_LOG_CMD",
-                        "::group::Compilation for {relative_sketch_path}{base_ref_str} with {invoked_cmd}",
-                    );
-                    if !success {
-                        log::error!(
-                            target: "CI_LOG_CMD",
-                            "::error::Compilation failed for {relative_sketch_path}{base_ref_str}",
-                        );
-                        if matches!(task_result.compile_ref, CompileRef::Head) {
-                            all_compilations_successful = false;
-                        }
-                        log::error!(target: "CI_LOG_CMD", "{output}");
-                    } else if self.sketch_compiler.verbose {
-                        log::debug!(target: "CI_LOG_CMD", "{output}");
-                    }
-                    log::info!(target: "CI_LOG_CMD", "::endgroup::");
-                    log::info!("Compilation time elapsed: {}", fmt_duration(&duration));
-
-                    // now extract data for reports
-                    let sizes = if success {
-                        get_sizes_from_output(&output)?
-                    } else {
-                        Vec::new()
-                    };
-                    let warnings = if self.sketch_compiler.enable_warnings_report {
-                        Some(get_warning_count_from_output(&output)?)
-                    } else {
-                        None
-                    };
-
-                    let sketch = Sketch {
-                        name: relative_sketch_path,
-                        compilation_success: success,
-                        sizes,
-                        warnings,
-                    };
-                    if matches!(task_result.compile_ref, CompileRef::Base) {
-                        base_sketch_reports.push(sketch);
-                    } else {
-                        sketch_reports.push(sketch);
-                    }
-                }
-                CompilationTaskResult::Err {
-                    relative_sketch_path,
-                    error,
-                    duration,
-                } => {
-                    // if task failed to execute (I/O problems): just log it and move on.
-                    log::info!(
-                        target: "CI_LOG_CMD",
-                        "::group::Compilation task failed for {}{base_ref_str}",
-                        relative_sketch_path
-                    );
-                    log::error!(target: "CI_LOG_CMD", "::error::{error}");
-                    if base_ref_str.is_empty() {
-                        // overall compilation failure is not affected by any base ref compilations
-                        all_compilations_successful = false;
-                    }
-                    log::info!(target: "CI_LOG_CMD", "::endgroup::");
-                    log::info!("Compilation time elapsed: {}", fmt_duration(&duration));
-                }
-            }
-        }
-
-        // we're done with the temp checkout of the base ref.
-        // dropping it will automatically purge the temp directory.
-        drop(base_ref_checkout);
+        // After parallel compilation, we're done with the temp checkout of the base ref.
+        // Dropping it will automatically purge the temp directory.
+        // Passing ownership to `join_tasks()` implies the object is dropped afterward.
+        let (mut sketch_reports, base_sketch_reports, all_compilations_successful) = self
+            .join_tasks(compile_jobs, base_ref_checkout, sketch_count)
+            .await?;
 
         let commit_hash =
             get_head_ref().ok_or_else(|| CompileSketchesError::UnknownGitRef("head"))?;
         let commit_url = format!("https://github.com/{repo}/commit/{commit_hash}");
 
-        let board_sizes = if self.enable_deltas_report {
+        if self.enable_deltas_report {
             apply_base_report(&mut sketch_reports, &base_sketch_reports);
+        };
+        let board_sizes = {
             let sizes_summary = get_sizes_summary_report(&sketch_reports);
             get_board_sizes_from_summary(&sizes_summary)
-        } else {
-            None
         };
 
         let report = Report {
@@ -469,6 +370,9 @@ impl CompileSketches {
             .join(self.sketch_compiler.fqbn.replace(':', "-") + ".json");
 
         // Serialize and write the canonical `Report`.
+        if !report.is_valid() {
+            return Err(CompileSketchesError::IncompleteReport(report));
+        }
         let json = serde_json::to_string(&report)?;
         fs::write(out_path, json)?;
 
@@ -532,5 +436,31 @@ impl CompileSketches {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn clean_up_paths() {
+        let mut temp_dir1 = tempfile::TempDir::with_prefix("temp-dir-1").unwrap();
+        temp_dir1.disable_cleanup(true);
+        let mut temp_dir2 = tempfile::TempDir::with_prefix("temp-dir-2").unwrap();
+        temp_dir2.disable_cleanup(true);
+        let temp_file = temp_dir2.path().join("a-temp-file.txt");
+        fs::write(&temp_file, "").unwrap();
+
+        let mut driver = CompileSketches::default();
+        driver.clean_up_paths.push(temp_dir1.path().to_path_buf());
+        driver.clean_up_paths.push(temp_file.clone());
+
+        driver.clean_up_tmp_assets().unwrap();
+        assert!(!temp_dir1.path().exists());
+        assert!(temp_dir2.path().exists());
+        assert!(!temp_file.exists());
+        fs::remove_dir(temp_dir2).unwrap();
     }
 }
