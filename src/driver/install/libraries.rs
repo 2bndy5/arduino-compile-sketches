@@ -125,3 +125,97 @@ impl CompileSketches {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::{
+        driver::DefaultPaths,
+        serde_types::{Dependencies, ManagerEntry},
+    };
+
+    use super::*;
+
+    #[test]
+    fn unresolved_path_lib_source_dir() {
+        let deps = Dependencies {
+            path: vec![PathEntry {
+                name: None,
+                source_path: "nonexistent/path/to/library".to_string(),
+            }],
+            ..Default::default()
+        };
+        let mut driver = CompileSketches {
+            libraries: deps,
+            ..Default::default()
+        };
+        let Err(result) = driver.install_libraries_from_path() else {
+            panic!("Expected error when library source path cannot be resolved");
+        };
+        assert!(matches!(result, CompileSketchesError::ResolvePath { .. }));
+    }
+
+    #[test]
+    fn install_path_lib_from_sub_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let lib_dir = PathBuf::from("tests/dep_fixtures/path-lib");
+
+        let deps = Dependencies {
+            path: vec![PathEntry {
+                name: None,
+                source_path: lib_dir.to_str().unwrap().to_string(),
+            }],
+            ..Default::default()
+        };
+        let mut driver = CompileSketches {
+            libraries: deps,
+            libraries_path: temp_dir.path().to_path_buf(),
+            ..Default::default()
+        };
+
+        let new_default_paths = DefaultPaths::new_in(&temp_dir.path().join("test-ws"));
+        driver.relocate_paths(new_default_paths);
+
+        driver.install_libraries_from_path().unwrap();
+        driver.clean_up_tmp_assets().unwrap();
+    }
+
+    /// installs the ArduinoJson lib multiple times with different requested versions.
+    #[tokio::test]
+    async fn install_from_mgr() {
+        let mut driver = CompileSketches {
+            libraries: Dependencies {
+                manager: vec![
+                    // lib with implicit latest version
+                    ManagerEntry {
+                        name: "ArduinoJson".to_string(),
+                        version: None,
+                        ..Default::default()
+                    },
+                    // lib with explicit version (not the latest)
+                    ManagerEntry {
+                        name: "ArduinoJson".to_string(),
+                        version: Some("7.0.0".to_string()),
+                        ..Default::default()
+                    },
+                    // lib with literal "latest" version
+                    ManagerEntry {
+                        name: "ArduinoJson".to_string(),
+                        version: Some("latest".to_string()),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let tmp_ws = tempfile::tempdir().unwrap();
+        let new_default_paths = DefaultPaths::new_in(tmp_ws.path());
+        driver.relocate_paths(new_default_paths);
+
+        driver.install_arduino_cli().await.unwrap();
+        driver.install_libraries_from_manager().unwrap();
+    }
+}

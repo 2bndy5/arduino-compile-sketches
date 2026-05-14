@@ -1,9 +1,9 @@
 use tokio::task::JoinSet;
 
-use super::report::{get_sizes_from_output, get_warning_count_from_output};
 use crate::{
     CompileSketches,
     error::{CompileSketchesError, Result},
+    report::{get_sizes_from_output, get_warning_count_from_output},
     utils::fmt_duration,
 };
 use arduino_report_size_deltas::report_structs::{Sketch, SketchSize, SketchSizeKind};
@@ -109,10 +109,10 @@ pub(super) fn checkout_base_ref(base_ref: &str, repo: &str) -> Result<Option<Bas
         .status()
         && status.success()
     {
-        return Ok(Some(BaseRefCheckout {
+        Ok(Some(BaseRefCheckout {
             base_ref: base_ref.to_string(),
             temp_dir: tmp,
-        }));
+        }))
     } else {
         log::warn!("Shallow clone of ref '{base_ref}' failed.");
         Ok(None)
@@ -195,22 +195,18 @@ impl SketchCompiler {
                 return Err(CompileSketchesError::ArduinoCliNotFound);
             }
         };
-        if self.arduino_cli_data_directory_path.exists() {
-            cmd.env(
-                "ARDUINO_DIRECTORIES_DATA",
-                self.arduino_cli_data_directory_path
-                    .to_string_lossy()
-                    .to_string(),
-            );
-        }
-        if self.arduino_cli_user_directory_path.exists() {
-            cmd.env(
-                "ARDUINO_DIRECTORIES_USER",
-                self.arduino_cli_user_directory_path
-                    .to_string_lossy()
-                    .to_string(),
-            );
-        }
+        cmd.env(
+            "ARDUINO_DIRECTORIES_DATA",
+            self.arduino_cli_data_directory_path
+                .to_string_lossy()
+                .to_string(),
+        );
+        cmd.env(
+            "ARDUINO_DIRECTORIES_USER",
+            self.arduino_cli_user_directory_path
+                .to_string_lossy()
+                .to_string(),
+        );
         Ok(cmd)
     }
 }
@@ -335,5 +331,19 @@ impl CompileSketches {
             base_sketch_reports,
             all_compilations_successful,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_arduino_cli_path() {
+        let compiler = SketchCompiler::default();
+        let sketch_path = PathBuf::from("test_sketch.ino");
+        let Err(CompileSketchesError::ArduinoCliNotFound) = compiler.compile_sketch(&sketch_path) else {
+            panic!("Expected error when Arduino CLI path is not set");
+        };
     }
 }

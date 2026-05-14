@@ -210,7 +210,7 @@ pub enum CompileSketchesError {
     ArchiveFormatUnsupported(String),
 
     /// An error that occurs when a generated report does not have enough data to form usable feedback.
-    /// 
+    ///
     /// This happens when [`Report::is_valid()`] returns `false`.
     #[error("The generated report did not have enough data to form usable feedback: {0:#?}")]
     IncompleteReport(Report),

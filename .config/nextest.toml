@@ -1,23 +1,8 @@
 # Nextest configuration for this repository
 # See https://nexte.st for full docs
 
-[test-groups]
-# tests that compile sketches in parallel have cache conflicts with each other
-# because the arduino-cli uses system-global cache folders.
-#
-# These cache conflicts might surfaces as:
-# > Error during build: The instance is no longer valid and needs to be reinitialized
-#
-# Which typically indicates a platform or library index was changed/removed during compilation.
-compile-tests = { max-threads = 1 }
-
 [profile.default]
 slow-timeout = { period = "60s", terminate-after = 2 }
-
-[[profile.default.overrides]]
-# NOTE: add to this filter any tests that compile sketches in parallel, to avoid cache conflicts.
-filter = "binary_id(arduino-compile-sketches::adafruit_mcp23017) + kind(bin)"
-test-group = "compile-tests"
 
 [profile.ci]
 failure-output = "final"

@@ -18,7 +18,7 @@ pub(crate) struct GitRefInfo {
 }
 
 /// A Platform dependency fetched with the Board Manager.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ManagerEntry {
     /// The name of the dependency.
     ///
@@ -35,7 +35,7 @@ pub struct ManagerEntry {
 }
 
 /// A Platform dependency specified as a local path.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PathEntry {
     /// The path to the dependency source.
     pub source_path: String,
@@ -50,7 +50,7 @@ pub struct PathEntry {
 }
 
 /// A Platform dependency specified as a git repository.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RepoEntry {
     /// The URL of the dependency source.
     pub source_url: String,
@@ -66,7 +66,7 @@ pub struct RepoEntry {
 }
 
 /// A Platform dependency specified as a direct download.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DownloadEntry {
     /// The URL of the dependency source.
     pub source_url: String,

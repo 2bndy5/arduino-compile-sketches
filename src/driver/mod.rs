@@ -16,11 +16,10 @@ use crate::{
 
 mod compiler;
 mod install;
-mod report;
 
 use self::compiler::{CompileRef, CompileTaskEnvelope, checkout_base_ref, compile_sketch_task};
+use crate::report::{apply_base_report, get_board_sizes_from_summary, get_sizes_summary_report};
 pub use compiler::SketchCompiler;
-use report::{apply_base_report, get_board_sizes_from_summary, get_sizes_summary_report};
 
 const USER_AGENT: &str = concat!("arduino-compile-sketches/", env!("CARGO_PKG_VERSION"));
 
@@ -42,15 +41,15 @@ pub struct DefaultPaths {
     pub board_manager_platforms_path: PathBuf,
 }
 
-impl Default for DefaultPaths {
-    fn default() -> Self {
-        let home = directories::UserDirs::new()
-            .map(|usr_dir| usr_dir.home_dir().to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
-        let arduino_cli_user_directory_path = home.join("Arduino");
+impl DefaultPaths {
+    /// Creates a new [`DefaultPaths`] instance with paths stemming from `root`.
+    ///
+    /// Useful for isolating arduino-cli resources.
+    pub fn new_in(root: &Path) -> Self {
+        let arduino_cli_user_directory_path = root.join("Arduino");
         let libraries_path = arduino_cli_user_directory_path.join("libraries");
         let user_platforms_path = arduino_cli_user_directory_path.join("hardware");
-        let arduino_cli_data_directory_path = home.join(".arduino15");
+        let arduino_cli_data_directory_path = root.join(".arduino15");
         let board_manager_platforms_path = arduino_cli_data_directory_path.join("packages");
         Self {
             arduino_cli_user_directory_path,
@@ -59,6 +58,15 @@ impl Default for DefaultPaths {
             arduino_cli_data_directory_path,
             board_manager_platforms_path,
         }
+    }
+}
+
+impl Default for DefaultPaths {
+    fn default() -> Self {
+        let home = directories::UserDirs::new()
+            .map(|usr_dir| usr_dir.home_dir().to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        Self::new_in(&home)
     }
 }
 
@@ -264,6 +272,23 @@ impl CompileSketches {
             clean_up_paths: Vec::new(),
             sketch_compiler,
         })
+    }
+
+    /// Relocates paths used by this instance to those specified in `new_paths`.
+    ///
+    /// Useful for concurrent testing or if more isolation of arduino-cli resources is desired.
+    ///
+    /// This should be called before any other instance methods (like
+    /// [`Self::compile_sketches`], [`Self::install_libraries`],
+    /// [`Self::install_platforms`]).
+    pub fn relocate_paths(&mut self, new_paths: DefaultPaths) {
+        self.libraries_path = new_paths.libraries_path;
+        self.user_platforms_path = new_paths.user_platforms_path;
+        self.board_manager_platforms_path = new_paths.board_manager_platforms_path;
+        self.sketch_compiler.arduino_cli_user_directory_path =
+            new_paths.arduino_cli_user_directory_path;
+        self.sketch_compiler.arduino_cli_data_directory_path =
+            new_paths.arduino_cli_data_directory_path;
     }
 
     /// Compiles sketches and generates reports.

@@ -125,16 +125,10 @@ impl CompileSketches {
                         id: platform_path.path.to_string_lossy().into_owned(),
                     }
                 })?,
-                Some(
-                    platform_path
-                        .path
-                        .file_name()
-                        .and_then(|s: &OsStr| s.to_str())
-                        .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
-                            key: "destination-name",
-                            id: platform_path.path.to_string_lossy().into_owned(),
-                        })?,
-                ),
+                platform_path
+                    .path
+                    .file_name()
+                    .and_then(|s: &OsStr| s.to_str()),
                 platform_path.is_overwrite,
             )?;
         }
@@ -149,41 +143,27 @@ impl CompileSketches {
         for repo in &deps {
             log::info!("Installing platform from repository: {}", repo.source_url);
 
-            let git_ref = repo.version.clone();
-            let source_path = repo.source_path.clone().unwrap_or_else(|| ".".into());
-            let name_from_url = repo.destination_name.clone().unwrap_or_else(|| {
-                repo.source_url
-                    .trim_end_matches('/')
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or("platform")
-                    .split('.')
-                    .next()
-                    .unwrap_or("platform")
-                    .to_string()
-            });
+            let git_ref = repo.version.as_deref();
+            let source_path = repo.source_path.as_deref().unwrap_or(".");
+            let platform_name = repo.destination_name.clone().ok_or_else(|| {
+                CompileSketchesError::PlatformDepMissingField {
+                    key: "name",
+                    id: repo.source_url.clone(),
+                }
+            })?;
             let dest_path =
-                self.get_platform_installation_path(&name_from_url, installed_platforms)?;
+                self.get_platform_installation_path(&platform_name, installed_platforms)?;
             self.install_from_repository(
                 &repo.source_url,
-                git_ref.as_deref(),
-                &source_path,
+                git_ref,
+                source_path,
                 dest_path.path.parent().ok_or_else(|| {
                     CompileSketchesError::PlatformDepMissingField {
                         key: "destination parent",
                         id: dest_path.path.to_string_lossy().into_owned(),
                     }
                 })?,
-                Some(
-                    dest_path
-                        .path
-                        .file_name()
-                        .and_then(|s: &OsStr| s.to_str())
-                        .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
-                            key: "destination-name",
-                            id: dest_path.path.to_string_lossy().into_owned(),
-                        })?,
-                ),
+                dest_path.path.file_name().and_then(|s: &OsStr| s.to_str()),
                 dest_path.is_overwrite,
             )?;
         }
@@ -216,17 +196,14 @@ impl CompileSketches {
                 source_path,
                 dest_path_info.path.parent().ok_or_else(|| {
                     CompileSketchesError::PlatformDepMissingField {
-                        key: "destination parent",
+                        key: "destination-path parent",
                         id: dest_path_info.path.to_string_lossy().into_owned(),
                     }
                 })?,
-                Some(
-                    dest_path_info
-                        .path
-                        .file_name()
-                        .and_then(|s: &OsStr| s.to_str())
-                        .unwrap_or(""),
-                ),
+                dest_path_info
+                    .path
+                    .file_name()
+                    .and_then(|s: &OsStr| s.to_str()),
                 true,
             )
             .await?;
@@ -240,20 +217,20 @@ impl CompileSketches {
         installed_platforms: &InstalledPlatforms,
     ) -> Result<PlatformInstallPath> {
         let mut split_iter = name.split(':');
-        let vendor =
-            split_iter
-                .next()
-                .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
-                    key: "vendor",
-                    id: name.to_string(),
-                })?;
-        let arch =
-            split_iter
-                .next()
-                .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
-                    key: "architecture",
-                    id: name.to_string(),
-                })?;
+        let vendor = split_iter
+            .next()
+            .and_then(|s| if !s.is_empty() { Some(s) } else { None })
+            .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
+                key: "name's vendor",
+                id: name.to_string(),
+            })?;
+        let arch = split_iter
+            .next()
+            .and_then(|s| if !s.is_empty() { Some(s) } else { None })
+            .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
+                key: "name's architecture",
+                id: name.to_string(),
+            })?;
 
         let mut result = PlatformInstallPath {
             path: self.user_platforms_path.join(vendor).join(arch),
@@ -280,5 +257,79 @@ impl CompileSketches {
         }
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::serde_types::{Dependencies, InstalledPlatform};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn bad_platform_name() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let fake_url = "file:///non-existent.zip";
+        let valid_name = "vendor:arch";
+        let bad_deps = vec![
+            // missing name entirely
+            DownloadEntry {
+                source_url: fake_url.to_string(),
+                destination_name: None,
+                source_path: Some("archive-root".to_string()),
+            },
+            // missing vendor and arch in name
+            DownloadEntry {
+                source_url: fake_url.to_string(),
+                destination_name: Some(String::new()),
+                ..Default::default()
+            },
+            // missing arch in name
+            DownloadEntry {
+                source_url: fake_url.to_string(),
+                destination_name: Some("vendor".to_string()),
+                ..Default::default()
+            },
+            // good form but bad installed version to instigate unknown parent path error
+            DownloadEntry {
+                source_url: fake_url.to_string(),
+                destination_name: Some(valid_name.to_string()),
+                ..Default::default()
+            },
+        ];
+        let mut driver = CompileSketches {
+            platforms: Dependencies::default(),
+            board_manager_platforms_path: temp_dir.path().join("board_manager"),
+            ..Default::default()
+        };
+        let installed_platforms = InstalledPlatforms {
+            platforms: vec![InstalledPlatform {
+                id: valid_name.to_string(),
+                installed_version: "/".to_string(), // should cause `Path::parent()` to return None
+                latest_version: None,
+            }],
+        };
+        for (dep, err_key) in bad_deps.into_iter().zip([
+            "name",
+            "name's vendor",
+            "name's architecture",
+            "destination-path parent",
+        ]) {
+            let err_id = dep.destination_name.clone().unwrap_or(fake_url.to_string());
+            driver.platforms.download.push(dep);
+            let Err(CompileSketchesError::PlatformDepMissingField { key, id }) = driver
+                .install_platform_from_download(&installed_platforms)
+                .await
+            else {
+                panic!("Expected error when installing platform dependency");
+            };
+            if err_key == "destination-path parent" {
+                assert!(id.ends_with("/"));
+                // assert_eq!(id.as_str(), /* drive root */);
+            } else {
+                assert_eq!(id, err_id);
+                assert_eq!(key, err_key);
+            }
+        }
     }
 }

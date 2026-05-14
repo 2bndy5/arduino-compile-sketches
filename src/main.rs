@@ -48,7 +48,7 @@ mod tests {
                 "INPUT_SKETCHES-REPORT-PATH",
                 ws.join("reports").to_str().unwrap(),
             );
-            // avoids race condition to clean cache
+            // avoids race condition about reusing cache
             env::set_var("INPUT_ENABLE-WARNINGS-REPORT", "true");
             env::set_var("INPUT_VERBOSE", verbose.to_string());
         }

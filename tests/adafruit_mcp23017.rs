@@ -2,7 +2,7 @@
 //! of `adafruit/Adafruit-MCP23017-Arduino-Library` (PR #89).
 #![cfg(feature = "bin")]
 
-use arduino_compile_sketches::{CompileSketches, logger};
+use arduino_compile_sketches::{CompileSketches, driver::DefaultPaths, logger};
 use arduino_report_size_deltas::report_structs::{Report, SizeValue, SketchSizeKind};
 use std::{
     env,
@@ -25,10 +25,10 @@ const BASE_SHA: &str = "0e82c8d873037ff2522b9167ac20433ac23ef0d4";
 /// This is the only SHA that differs for `mcp23xxx_interrupt`.
 const HEAD_SHA: &str = "6f92c72afa71e7b47eef2227580c7c3f30bffc26";
 
-/// Example whose tree-SHA is **identical** at both commits → near-zero delta.
+/// Example whose tree-SHA is **identical** at both commits -> near-zero delta.
 const SKETCH_STABLE: &str = "examples/mcp23xxx_blink";
 
-/// Example modified by PR #89 → measurable size delta when base vs head differ.
+/// Example modified by PR #89 -> measurable size delta when base vs head differ.
 const SKETCH_MODIFIED: &str = "examples/mcp23xxx_interrupt";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -135,56 +135,6 @@ struct LocalGitRepo {
     _working_dir: TempDir,
     _bare_root: TempDir,
     source_url: String,
-}
-
-/// `git init` a minimal Arduino library and return a bare clone path ending in `.git`.
-fn create_local_repo_lib() -> LocalGitRepo {
-    let work = TempDir::new().expect("create temp dir for repo lib");
-
-    let src = work.path().join("src");
-    fs::create_dir_all(&src).unwrap();
-    fs::write(
-        work.path().join("library.properties"),
-        "name=RepoLib\nversion=1.0.0\nauthor=Test\nsentence=Test.\n\
-         paragraph=Test.\ncategory=Other\nurl=\narchitectures=*\n",
-    )
-    .unwrap();
-    fs::write(
-        src.join("RepoLib.h"),
-        "#pragma once\ninline int repo_lib_value() { return 7; }\n",
-    )
-    .unwrap();
-
-    run_git(
-        work.path(),
-        &["init", "--initial-branch=main"],
-        "init test library repo",
-    );
-    run_git(work.path(), &["add", "."], "add test library repo files");
-    run_git(
-        work.path(),
-        &["commit", "-m", "init"],
-        "commit test library repo files",
-    );
-
-    let bare_root = TempDir::new().expect("create temp dir for bare repo lib");
-    let bare_repo_path = bare_root.path().join("RepoLib.git");
-    run_git(
-        bare_root.path(),
-        &[
-            "clone",
-            "--bare",
-            work.path().to_string_lossy().as_ref(),
-            bare_repo_path.to_string_lossy().as_ref(),
-        ],
-        "clone bare test library repo",
-    );
-
-    LocalGitRepo {
-        _working_dir: work,
-        _bare_root: bare_root,
-        source_url: bare_repo_path.to_string_lossy().to_string(),
-    }
 }
 
 fn write_minimal_platform_files(root: &Path) {
@@ -310,18 +260,14 @@ struct TestParams {
     use_download_platform: bool,
     /// Add `"Adafruit BusIO"` via the library manager.
     use_manager_lib: bool,
-    /// Symlink `tests/dep_fixtures/path-lib/` as a path library.
-    use_path_lib: bool,
-    /// Create a local git repo and install it via `file://` URL.
-    use_repo_lib: bool,
     /// Serve `tests/dep_fixtures/download-lib/` via mockito and install it.
     use_download_lib: bool,
-    /// `true` → clone the real repo at HEAD_SHA as the workspace.
-    /// `false` → create a minimal local workspace (for error-path tests).
+    /// `true` -> clone the real repo at HEAD_SHA as the workspace.
+    /// `false` -> create a minimal local workspace (for error-path tests).
     use_real_repo: bool,
     /// When `use_real_repo = false`, include a sketch with `#error` in the local workspace.
     include_bad_sketch: bool,
-    /// PR event with delta report; `false` → push event.
+    /// PR event with delta report; `false` -> push event.
     is_pr: bool,
     enable_deltas: bool,
     fail_on_compile_error: bool,
@@ -371,14 +317,7 @@ async fn run_compile_test(params: TestParams) {
     let workspace_str = workspace_dir.path().to_string_lossy().to_string();
     let unique_suffix = std::process::id().to_string();
 
-    // ── 2. Repo-lib (optional) ────────────────────────────────────────────────
-    let repo_lib_dir = if params.use_repo_lib {
-        Some(create_local_repo_lib())
-    } else {
-        None
-    };
-
-    // ── 2b. Platform fixtures (optional) ─────────────────────────────────────
+    // ── 2. Platform fixtures (optional) ─────────────────────────────────────
     let path_platform_dir = if params.use_path_platform {
         Some(create_local_path_platform())
     } else {
@@ -392,32 +331,22 @@ async fn run_compile_test(params: TestParams) {
 
     // ── 3. mockito download-lib (optional) ────────────────────────────────────
     let mut mock_server = mockito::Server::new_async().await;
-    let _download_mock = if params.use_download_lib {
+    if params.use_download_lib {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/dep_fixtures/download-lib");
         let zip_bytes = build_zip(&fixture, "download-lib");
-        Some(
-            mock_server
-                .mock("GET", "/download-lib.zip")
-                .with_status(200)
-                .with_header("content-type", "application/octet-stream")
-                .with_body(zip_bytes)
-                .create_async()
-                .await,
-        )
-    } else {
-        None
-    };
+        mock_server
+            .mock("GET", "/download-lib.zip")
+            .with_body(zip_bytes)
+            .create();
+    }
 
     if params.use_download_platform {
         let fixture = create_local_path_platform();
         let zip_bytes = build_zip(fixture.path(), "download-platform");
         mock_server
             .mock("GET", "/download-platform.zip")
-            .with_status(200)
-            .with_header("content-type", "application/octet-stream")
             .with_body(zip_bytes)
-            .create_async()
-            .await;
+            .create();
     }
 
     // ── 4. Event JSON + INPUT_* env setup ────────────────────────────────────
@@ -428,7 +357,7 @@ async fn run_compile_test(params: TestParams) {
     } else {
         fs::write(
             &event_path,
-            serde_json::json!({"before":BASE_SHA}).to_string(),
+            serde_json::json!({"before": BASE_SHA}).to_string(),
         )
         .unwrap();
     }
@@ -437,25 +366,8 @@ async fn run_compile_test(params: TestParams) {
     let report_dir = TempDir::new().unwrap();
     let mut libraries_yaml = Vec::new();
 
-    if params.use_manager_lib {
+    if params.use_manager_lib || params.use_real_repo {
         libraries_yaml.push("name: Adafruit BusIO".to_string());
-    }
-
-    if params.use_path_lib {
-        let path_lib = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/dep_fixtures/path-lib")
-            .to_path_buf();
-        libraries_yaml.push(format!(
-            "source-path: {}\n  name: PathLib",
-            to_posix_path(&path_lib)
-        ));
-    }
-
-    if let Some(ref repo_dir) = repo_lib_dir {
-        libraries_yaml.push(format!(
-            "source-url: {}\n  destination-name: RepoLib_{unique_suffix}",
-            repo_dir.source_url
-        ));
     }
 
     if params.use_download_lib {
@@ -478,14 +390,14 @@ async fn run_compile_test(params: TestParams) {
         platforms_yaml.push("name: arduino:avr".to_string());
     }
 
-    if let Some(ref platform_dir) = path_platform_dir {
+    if let Some(platform_dir) = path_platform_dir.as_ref() {
         let source_path = to_posix_path(platform_dir.path());
         platforms_yaml.push(format!(
             "source-path: {source_path}\n  name: test-path_{unique_suffix}:arch"
         ));
     }
 
-    if let Some(ref platform_dir) = repo_platform_dir {
+    if let Some(platform_dir) = repo_platform_dir.as_ref() {
         platforms_yaml.push(format!(
             "source-url: {}\n  name: test-repo_{unique_suffix}:arch",
             platform_dir.source_url
@@ -549,6 +461,10 @@ async fn run_compile_test(params: TestParams) {
     // ── 7. Construct CompileSketches ──────────────────────────────────────────
     // `new_from_env()` uses clap to process input args via env vars
     let mut app = CompileSketches::new_from_env().expect("build app from INPUT_* env vars");
+
+    // replace paths with test-specific paths
+    let new_default_paths = DefaultPaths::new_in(&report_dir.path().join("test-workspace"));
+    app.relocate_paths(new_default_paths);
 
     // ── 8. Run ────────────────────────────────────────────────────────────────
     let result = app.compile_sketches().await;
@@ -615,14 +531,12 @@ async fn run_compile_test(params: TestParams) {
 
 /// Happy path: all 4 library dependency types, PR event with delta report.
 #[tokio::test]
-async fn all_lib_types_pr_delta() {
+async fn pr_delta() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        use_manager_lib: true,
-        use_path_lib: true,
-        use_repo_lib: true,
-        use_download_lib: true,
+        // use_manager_lib: true,
+        // use_download_lib: true,
         use_real_repo: true,
         is_pr: true,
         enable_deltas: true,

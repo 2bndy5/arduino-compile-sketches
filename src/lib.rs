@@ -18,5 +18,7 @@ pub mod serde_types;
 /// A module containing utility functions.
 pub mod utils;
 
+mod report;
+
 pub use driver::CompileSketches;
 pub use error::CompileSketchesError;
