@@ -212,6 +212,12 @@ impl SketchCompiler {
 }
 
 impl CompileSketches {
+    /// Join the given `compile_jobs` and extract data from stdout for each sketch.
+    ///
+    /// Returns a tuple of:
+    /// - `Vec<Sketch>`: the compilation reports for sketches compiled from the head ref
+    /// - `Vec<Sketch>`: the compilation reports for sketches compiled from the base ref
+    /// - `bool`: summary success of head ref compilations (not base ref compilations)
     pub(super) async fn join_tasks(
         &self,
         mut compile_jobs: JoinSet<CompileTaskEnvelope>,
@@ -336,14 +342,69 @@ impl CompileSketches {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use super::*;
 
     #[test]
-    fn no_arduino_cli_path() {
+    fn fail_compile_task_exec() {
         let compiler = SketchCompiler::default();
-        let sketch_path = PathBuf::from("test_sketch.ino");
-        let Err(CompileSketchesError::ArduinoCliNotFound) = compiler.compile_sketch(&sketch_path) else {
+        let sketch_path = PathBuf::from("sketches");
+        let sketch = sketch_path.join("test_sketch.ino");
+        let CompilationTaskResult::Err {
+            relative_sketch_path: _,
+            error,
+            duration: _,
+        } = compile_sketch_task(compiler, sketch, sketch_path.to_string_lossy().to_string())
+        else {
             panic!("Expected error when Arduino CLI path is not set");
         };
+        assert!(matches!(error, CompileSketchesError::ArduinoCliNotFound));
+    }
+
+    #[tokio::test]
+    async fn fail_compile_task_join() {
+        #[cfg(feature = "bin")]
+        crate::logger::init();
+
+        let compiler = SketchCompiler::default();
+        let driver = CompileSketches {
+            sketch_compiler: compiler.clone(),
+            ..Default::default()
+        };
+
+        let sketch_path = PathBuf::from("sketches");
+        let sketch = sketch_path.join("test_sketch.ino");
+
+        let mut compile_jobs = JoinSet::new();
+        compile_jobs.spawn_blocking(move || CompileTaskEnvelope {
+            compile_ref: CompileRef::Head,
+            result: compile_sketch_task(
+                compiler,
+                sketch,
+                sketch_path.to_string_lossy().to_string(),
+            ),
+        });
+
+        let (sketches, base_sketches, success) =
+            driver.join_tasks(compile_jobs, None, 1).await.unwrap();
+        assert!(!success, "overall compilation reported as successful");
+        assert!(sketches.is_empty(), "sketch reports should be empty");
+        assert!(
+            base_sketches.is_empty(),
+            "base sketch reports should be empty"
+        );
+    }
+
+    #[test]
+    fn fail_checkout_base_ref() {
+        #[cfg(feature = "bin")]
+        crate::logger::init();
+
+        let result = checkout_base_ref("bogus-ref", "bogus-repo").unwrap();
+        assert!(
+            result.is_none(),
+            "Expected `None` when checkout of base ref fails"
+        );
     }
 }
