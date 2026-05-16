@@ -91,6 +91,12 @@ pub(crate) fn fmt_duration(duration: &Duration) -> String {
 }
 
 pub(crate) fn create_symlink(src: &Path, dst: &Path) -> std::io::Result<()> {
+    log::debug!(
+        "Creating symlink at {} for target {}",
+        dst.to_string_lossy(),
+        src.to_string_lossy(),
+    );
+
     #[cfg(unix)]
     std::os::unix::fs::symlink(src, dst)?;
 

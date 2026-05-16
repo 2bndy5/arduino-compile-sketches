@@ -110,6 +110,7 @@ fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
             "checkout cached head commit",
         );
     }
+    lock_file.unlock().expect("unlock cache lock file");
     repo_dir
 }
 

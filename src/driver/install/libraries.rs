@@ -184,6 +184,12 @@ mod tests {
     /// installs the ArduinoJson lib multiple times with different requested versions.
     #[tokio::test]
     async fn install_from_mgr() {
+        #[cfg(feature = "bin")]
+        {
+            crate::logger::init();
+            log::set_max_level(log::LevelFilter::Debug);
+        }
+
         let mut driver = CompileSketches {
             libraries: Dependencies {
                 manager: vec![

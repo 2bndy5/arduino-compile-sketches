@@ -144,7 +144,7 @@ impl CompileSketches {
             log::info!("Installing platform from repository: {}", repo.source_url);
 
             let git_ref = repo.version.as_deref();
-            let source_path = repo.source_path.as_deref().unwrap_or(".");
+            let source_path = repo.source_path.as_deref().unwrap_or("./");
             let platform_name = repo.destination_name.clone().ok_or_else(|| {
                 CompileSketchesError::PlatformDepMissingField {
                     key: "name",

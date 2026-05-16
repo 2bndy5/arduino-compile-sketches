@@ -5,7 +5,7 @@ mod platforms;
 use std::{
     ffi::OsStr,
     fs,
-    io::Write,
+    io::{Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::Command,
     time::Duration,
@@ -38,21 +38,31 @@ impl CompileSketches {
                 "arduino-cli",
             )
         };
-        let download_url = format!("https://downloads.arduino.cc/arduino-cli/{archive_file_name}",);
+        let download_url = format!("https://downloads.arduino.cc/arduino-cli/{archive_file_name}");
 
-        let cache_base = directories::ProjectDirs::from("org", "arduino", "compile-sketches")
+        let cache_base = directories::ProjectDirs::from("", "2bndy5", "arduino-compile-sketches")
             .map(|project_dir| project_dir.cache_dir().to_path_buf())
             .unwrap_or_else(|| PathBuf::from(".").join(".arduino-compile-sketches_cache"));
+        log::debug!(
+            "Acquiring lock for arduino-cli installation cache at {}",
+            cache_base.to_string_lossy()
+        );
+        if !cache_base.exists() {
+            fs::create_dir_all(&cache_base)?;
+        }
         let lock_file_path = cache_base.join(".lock");
         let lock_file = fs::File::create(&lock_file_path)?;
         lock_file.lock()?;
 
         let install_dir = cache_base.join(format!("arduino-cli_{version}"));
+        log::debug!(
+            "Checking for existing arduino-cli installation at {}",
+            install_dir.to_string_lossy()
+        );
 
         if !install_dir.exists() {
             fs::create_dir_all(&install_dir)?;
         }
-
         let bin_path = install_dir.join(bin_name);
         let ver_is_latest = version.eq_ignore_ascii_case("latest");
         if bin_path.exists() && !ver_is_latest {
@@ -73,15 +83,15 @@ impl CompileSketches {
         } else {
             self.install_from_download(&download_url, bin_name, &install_dir, None, ver_is_latest)
                 .await?;
+        }
 
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if bin_path.exists() {
-                    let mut perms = fs::metadata(&bin_path)?.permissions();
-                    perms.set_mode(0o755);
-                    fs::set_permissions(&bin_path, perms)?;
-                }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if bin_path.exists() {
+                let mut perms = fs::metadata(&bin_path)?.permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&bin_path, perms)?;
             }
         }
         lock_file.unlock()?;
@@ -175,15 +185,33 @@ impl CompileSketches {
             fs::create_dir_all(destination_parent_path)?;
         }
 
-        create_symlink(source_path, &destination_path).map_err(|source| {
-            CompileSketchesError::CreateSymlink {
-                source_path: source_path.to_string_lossy().into_owned(),
-                destination_path: destination_path.to_string_lossy().into_owned(),
-                source,
-            }
-        })?;
-        // Handle cleanup of the symlink on normal exit
-        self.clean_up_paths.push(destination_path);
+        if source_path.is_file()
+            && source_path
+                .file_name()
+                .and_then(OsStr::to_str)
+                .map(|name| name.starts_with("arduino-cli"))
+                .unwrap_or_else(|| false)
+        {
+            // For arduino-cli installs, copy the file into the destination (cache) dir
+            // instead of creating a symlink to the file in the temp extraction dir.
+            fs::copy(source_path, &destination_path).map_err(|source| {
+                CompileSketchesError::CreateSymlink {
+                    source_path: source_path.to_string_lossy().into_owned(),
+                    destination_path: destination_path.to_string_lossy().into_owned(),
+                    source,
+                }
+            })?;
+        } else {
+            create_symlink(source_path, &destination_path).map_err(|source| {
+                CompileSketchesError::CreateSymlink {
+                    source_path: source_path.to_string_lossy().into_owned(),
+                    destination_path: destination_path.to_string_lossy().into_owned(),
+                    source,
+                }
+            })?;
+            // Handle cleanup of the symlink on normal exit
+            self.clean_up_paths.push(destination_path);
+        }
 
         Ok(())
     }
@@ -197,18 +225,14 @@ impl CompileSketches {
         destination_name: Option<&str>,
         force: bool,
     ) -> Result<()> {
-        let mut tmp =
-            tempfile::TempDir::with_prefix("install_from_repository-").map_err(|source| {
-                CompileSketchesError::TempPathIo {
-                    task: "create temp directory for repository clone",
-                    source,
-                }
-            })?;
-        // Don't let the tempdir be automatically deleted on drop.
-        // We'll clean it up when exiting normally
-        tmp.disable_cleanup(true);
-        let clone_path = tmp.path();
-        self.clean_up_paths.push(clone_path.to_path_buf());
+        let clone_path = tempfile::TempDir::with_prefix("install_from_repository-")
+            .map_err(|source| CompileSketchesError::TempPathIo {
+                task: "create temp directory for repository clone",
+                source,
+            })?
+            // Don't let the tempdir be automatically deleted on drop.
+            // We'll clean it up when exiting normally
+            .keep();
         let mut clone_cmd = Command::new("git");
         if git_ref.is_none() {
             clone_cmd.args(["clone", "--depth", "1", "--recursive"]);
@@ -230,7 +254,7 @@ impl CompileSketches {
             let git_ref = if gr == "latest" {
                 // Resolve "latest" as a git ref; fall back to the latest tag if "latest" doesn't exist.
                 let rev_parsed = Command::new("git")
-                    .current_dir(clone_path)
+                    .current_dir(&clone_path)
                     .args(["rev-parse", gr])
                     .output()
                     .map_err(|source| CompileSketchesError::GitCommandIo {
@@ -243,7 +267,7 @@ impl CompileSketches {
                         .to_string()
                 } else {
                     let tag_list = Command::new("git")
-                        .current_dir(clone_path)
+                        .current_dir(&clone_path)
                         .args([
                             "tag",
                             // spell-checker: disable-next-line
@@ -274,7 +298,7 @@ impl CompileSketches {
 
             // Checkout the specified git ref
             let checkout = Command::new("git")
-                .current_dir(clone_path)
+                .current_dir(&clone_path)
                 .args(["checkout", &git_ref])
                 .output()
                 .map_err(|source| CompileSketchesError::GitCommandIo {
@@ -290,7 +314,7 @@ impl CompileSketches {
 
         // init submodules as shallow
         let submodule_out = Command::new("git")
-            .current_dir(clone_path)
+            .current_dir(&clone_path)
             .args([
                 "submodule",
                 "update",
@@ -315,7 +339,9 @@ impl CompileSketches {
             destination_parent_path,
             destination_name,
             force,
-        )
+        )?;
+        self.clean_up_paths.push(clone_path);
+        Ok(())
     }
 
     async fn install_from_download(
@@ -333,32 +359,37 @@ impl CompileSketches {
             })?;
 
         let mut resp = self.http_client.get(url).send().await?;
+        log::debug!("Downloading from URL: {url}");
         resp.error_for_status_ref()?;
         while let Some(data) = resp.chunk().await? {
             archive_path.write_all(&data)?;
         }
         archive_path.flush()?;
+        // Ensure the archive file cursor is at the start before any readers consume it.
+        archive_path.seek(SeekFrom::Start(0)).map_err(|source| {
+            CompileSketchesError::ArchiveExtractionIo {
+                task: "set seek position for archive file to start after download",
+                source,
+            }
+        })?;
 
-        let mut extract_dir =
-            tempfile::TempDir::with_prefix("install_from_download-").map_err(|source| {
-                CompileSketchesError::TempPathIo {
-                    task: "create temp path for archive extraction",
-                    source,
-                }
-            })?;
-        // Don't delete the extract dir on drop.
-        // We'll clean it up when app exits normally
-        extract_dir.disable_cleanup(true);
-        self.clean_up_paths.push(extract_dir.path().to_path_buf());
+        let extract_dir = tempfile::TempDir::with_prefix("install_from_download-")
+            .map_err(|source| CompileSketchesError::TempPathIo {
+                task: "create temp path for archive extraction",
+                source,
+            })?
+            // Don't delete the extract dir on drop.
+            // We'll clean it up when app exits normally
+            .keep();
         let url_parsed = Url::parse(url)?;
         let url_path = PathBuf::from(url_parsed.path());
         let filename = url_path
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or_default();
-        extract_archive(&mut archive_path, extract_dir.path(), filename)?;
+        extract_archive(&mut archive_path, &extract_dir, filename)?;
 
-        let archive_root = get_archive_root_path(extract_dir.path())?;
+        let archive_root = get_archive_root_path(&extract_dir)?;
         let src = fs::canonicalize(archive_root.join(source_path)).map_err(|source| {
             CompileSketchesError::ArchiveExtractionIo {
                 task: "resolve extracted archive root path",
@@ -366,6 +397,7 @@ impl CompileSketches {
             }
         })?;
         self.install_from_path(&src, destination_parent_path, destination_name, force)?;
+        self.clean_up_paths.push(extract_dir);
         Ok(())
     }
 }
@@ -413,7 +445,6 @@ fn get_archive_root_path(extract_dir: &Path) -> Result<PathBuf> {
 fn extract_archive(archive_path: &mut fs::File, extract_dir: &Path, filename: &str) -> Result<()> {
     if filename.ends_with(".zip") {
         let mut zip = zip::ZipArchive::new(archive_path)?;
-        log::debug!("Extracting ZIP archive with {} entries", zip.len());
         zip.extract(extract_dir)?;
     } else if filename.ends_with(".tar.gz") || filename.ends_with(".tgz") {
         let dec = flate2::read::GzDecoder::new(archive_path);
