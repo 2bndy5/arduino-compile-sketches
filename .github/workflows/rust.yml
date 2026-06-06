@@ -85,55 +85,42 @@ jobs:
         include:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: arm-unknown-linux-gnueabi
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: arm-unknown-linux-gnueabihf
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: armv7-unknown-linux-gnueabihf
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: powerpc-unknown-linux-gnu
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: powerpc64-unknown-linux-gnu
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: powerpc64le-unknown-linux-gnu
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: s390x-unknown-linux-gnu
             os: ubuntu-latest
-            vendored-tls: true
             cross: true
           - target: aarch64-apple-darwin
             os: macos-latest
-            vendored-tls: true
             cross: false
           - target: x86_64-apple-darwin
             os: macos-latest
-            vendored-tls: true
             cross: false
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -170,7 +157,7 @@ jobs:
           --bin report-size-deltas
           --release
           --target ${{ matrix.target }}
-          --features bin${{ matrix.vendored-tls && ',native-tls-vendored' || ''}}
+          --features bin
 
       - name: Prepare artifacts (unix)
         if: runner.os != 'Windows'
@@ -179,17 +166,17 @@ jobs:
           tgt="report-size-deltas"
           mv "target/${{ matrix.target }}/release/${tgt}" "${tgt}"
           arc_name="report-size-deltas-${{ matrix.target }}.tar.gz"
-          tar -a -c -v -z -f "${arc_name}" ${tgt} LICENSE
+          tar -a -c -v -z -f "${arc_name}" "${tgt}" "LICENSE"
       - name: Prepare artifacts (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         # `tar.exe` in powershell is different from `tar` in bash.
         # need to use `tar.exe` in powershell to create a valid zip file.
         run: |-
-          $tgt = "report-size-deltas.exe"
-          mv "target/${{ matrix.target }}/release/${tgt}" "${tgt}"
+          $tgt = "report-size-deltas"
+          mv "target/${{ matrix.target }}/release/${tgt}.exe" "${tgt}.exe"
           $arc_name = "report-size-deltas-${{ matrix.target }}.zip"
-          tar -a -c -v -f "${arc_name}" ${tgt} LICENSE
+          tar -a -c -v -f "${arc_name}" "${tgt}.exe" "LICENSE"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

@@ -113,3 +113,5 @@ def "nur pre-commit" [
     }
     run-cmd ...[uvx, ...$args]
 }
+
+alias "nur pre" = nur pre-commit

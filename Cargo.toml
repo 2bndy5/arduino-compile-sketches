@@ -9,29 +9,38 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4.6", features = ["derive", "env"], optional = true }
 regex = "1.12"
-reqwest = { version = "0.13", default-features = false, features = ["http2", "charset", "system-proxy"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tar = "0.4"
 flate2 = "1.1"
 zip = { version = "8.6.0", features = ["deflate-flate2"] }
 tempfile = "3.27"
-serde-saphyr = "0.0.26"
-arduino-report-size-deltas = "1.1.1"
+serde-saphyr = "0.0.27"
+arduino-report-size-deltas = "1.2.0"
 log = "0.4"
 url = "2.5.8"
 directories = "6.0.0"
 thiserror = "2.0.18"
 colored = { version = "3.1.1", optional = true }
 
+[dependencies.reqwest]
+version = "0.13"
+# The `reqwest` crate auto-enables the `default-tls` feature,
+# which may be undesirable for lib consumers. This config is
+# designed to allow lib consumers to choose their preferred
+# TLS backend.
+default-features = false
+features = ["http2", "charset", "system-proxy"]
+
 [dev-dependencies]
 mockito = "1.7.2"
 
 [features]
 default = []
-bin = ["clap", "reqwest/native-tls", "colored"]
-clap = ["dep:clap"]
-colored = ["dep:colored"]
-openssl = ["reqwest/native-tls-vendored"]
+bin = [
+    "dep:clap",
+    "dep:colored",
+    "reqwest/default-tls",
+]
 
 [[bin]]
 name = "arduino-compile-sketches"

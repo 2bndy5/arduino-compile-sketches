@@ -82,7 +82,7 @@ pub struct DownloadEntry {
 
 /// A Platform dependency specified in the input YAML
 #[derive(Debug)]
-#[cfg(feature = "clap")]
+#[cfg(feature = "bin")]
 pub(crate) enum PlatformDependency {
     Manager(ManagerEntry),
     Path(PathEntry),
@@ -90,9 +90,9 @@ pub(crate) enum PlatformDependency {
     Download(DownloadEntry),
 }
 
-#[cfg(feature = "clap")]
+#[cfg(feature = "bin")]
 use std::collections::HashMap;
-#[cfg(feature = "clap")]
+#[cfg(feature = "bin")]
 impl TryFrom<HashMap<String, String>> for PlatformDependency {
     type Error = crate::error::CompileSketchesError;
 
@@ -153,7 +153,7 @@ pub struct Dependencies {
 }
 
 impl Dependencies {
-    #[cfg(feature = "clap")]
+    #[cfg(feature = "bin")]
     pub(crate) fn from_input(input: Vec<HashMap<String, String>>) -> crate::error::Result<Self> {
         let mut deps = Self::default();
         for map in input {
@@ -245,7 +245,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(feature = "clap")]
+    #[cfg(feature = "bin")]
     fn parse_platform_input() {
         use std::collections::HashMap;
 
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "clap")]
+    #[cfg(feature = "bin")]
     fn fail_parse_dep_entry() {
         use crate::error::CompileSketchesError;
         use std::collections::HashMap;
