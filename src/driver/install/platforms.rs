@@ -262,6 +262,8 @@ impl CompileSketches {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use crate::serde_types::{Dependencies, InstalledPlatform};
 
     use super::*;

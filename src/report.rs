@@ -306,6 +306,8 @@ fn culminate_sketch_size(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use std::{fs, path::PathBuf};
 
     use arduino_report_size_deltas::report_structs::{

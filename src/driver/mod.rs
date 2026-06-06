@@ -455,9 +455,10 @@ impl CompileSketches {
             if path.exists() {
                 if path.is_file() {
                     fs::remove_file(path)?;
-                } else if path.is_dir() {
-                    fs::remove_dir_all(path)?;
+                    continue;
                 }
+                // else if path.is_dir()
+                fs::remove_dir_all(path)?;
             }
         }
         Ok(())
@@ -466,6 +467,10 @@ impl CompileSketches {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
+    use crate::logger;
+
     use super::*;
     use std::fs;
 
@@ -481,11 +486,29 @@ mod tests {
         let mut driver = CompileSketches::default();
         driver.clean_up_paths.push(temp_dir1.path().to_path_buf());
         driver.clean_up_paths.push(temp_file.clone());
+        driver
+            .clean_up_paths
+            .push(PathBuf::from("non-existent-path"));
 
         driver.clean_up_tmp_assets().unwrap();
         assert!(!temp_dir1.path().exists());
         assert!(temp_dir2.path().exists());
         assert!(!temp_file.exists());
         fs::remove_dir(temp_dir2).unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "bin")]
+    fn find_sketches() {
+        let mut driver = CompileSketches::default();
+        logger::init();
+        driver.sketch_paths.push(PathBuf::from("non-existent-path"));
+        let fake_sketch_file = tempfile::NamedTempFile::with_suffix(".ino").unwrap();
+        driver
+            .sketch_paths
+            .push(fake_sketch_file.path().to_path_buf());
+        let result = driver.find_sketches().unwrap();
+        assert!(!result.is_empty() && result.len() == 1);
+        assert_eq!(result[0], fake_sketch_file.path());
     }
 }

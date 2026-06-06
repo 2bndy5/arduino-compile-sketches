@@ -464,7 +464,7 @@ fn extract_archive(archive_path: &mut fs::File, extract_dir: &Path, filename: &s
 
 #[cfg(test)]
 mod tests {
-    // #![allow(clippy::panic)]
+    #![allow(clippy::unwrap_used, clippy::panic)]
 
     use std::path::PathBuf;
 
