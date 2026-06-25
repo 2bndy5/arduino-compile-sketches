@@ -187,21 +187,12 @@ impl Default for CompileSketches {
 impl CompileSketches {
     /// Creates a new [`CompileSketches`] instance from environment variables and CLI arguments.
     #[cfg(feature = "bin")]
-    pub fn new_from_env() -> Result<Self> {
+    pub fn from_cli(args: &[String]) -> Result<Self> {
         use crate::cli::CliArgs;
         use clap::Parser;
         use std::collections::HashMap;
 
-        let args = CliArgs::parse_from(
-            // compile-time only: check for integration testing
-            if option_env!("ARDUINO_COMPILE_SKETCHES")
-                .is_some_and(|v| v == "INTEGRATION TESTS SKIP CLI ARGS")
-            {
-                vec![] // don't parse args passed to cargo or cargo-nextest
-            } else {
-                env::args().collect::<Vec<String>>()
-            },
-        );
+        let args = CliArgs::parse_from(args);
 
         let platforms =
             match serde_saphyr::from_str::<Vec<HashMap<String, String>>>(&args.platforms) {

@@ -7,7 +7,6 @@ use arduino_report_size_deltas::report_structs::{Report, SizeValue, SketchSizeKi
 use std::{
     env,
     fs::{self, File},
-    io::ErrorKind,
     io::Write,
     path::{Path, PathBuf},
     process::Command,
@@ -58,11 +57,7 @@ fn run_git(current_dir: &Path, args: &[&str], task: &str) {
 }
 
 fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
-    let cache_root = env::temp_dir()
-        .join("arduino-compile-sketches-tests")
-        .join("repo-cache")
-        // only use the repo name as cache dir name; otherwise "adafruit" would appear twice in the same dir name.
-        .join(repo.split_once('/').unwrap().1);
+    let cache_root = env::temp_dir().join("arduino-compile-sketches-tests");
     fs::create_dir_all(&cache_root).expect("create cache root");
 
     let lock_path = cache_root.join("cache.lock");
@@ -75,20 +70,16 @@ fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
         .expect("open cache lock file");
     lock_file.lock().expect("lock cache lock file");
 
-    let repo_dir = cache_root.join("repo");
+    // only use the repo name as cache dir name; otherwise "adafruit" would appear twice in the same dir name.
+    let repo_dir = cache_root.join(repo.split_once('/').unwrap().1);
     let repo_url = format!("https://github.com/{repo}.git");
     if !repo_dir.exists() {
-        if let Err(source) = fs::remove_dir_all(&repo_dir)
-            && source.kind() != ErrorKind::NotFound
-        {
-            panic!("failed to clear stale cache dir: {source}");
-        }
         run_git(
             &cache_root,
             &[
                 "clone",
                 &repo_url,
-                repo_dir.to_string_lossy().as_ref(),
+                &repo_dir.to_string_lossy(),
                 "--depth",
                 "3",
                 "--revision",
@@ -461,7 +452,7 @@ async fn run_compile_test(params: TestParams) {
 
     // ── 7. Construct CompileSketches ──────────────────────────────────────────
     // `new_from_env()` uses clap to process input args via env vars
-    let mut app = CompileSketches::new_from_env().expect("build app from INPUT_* env vars");
+    let mut app = CompileSketches::from_cli(&[]).expect("build app from INPUT_* env vars");
 
     // replace paths with test-specific paths
     let new_default_paths = DefaultPaths::new_in(&report_dir.path().join("test-workspace"));

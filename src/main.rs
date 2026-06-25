@@ -1,10 +1,13 @@
 use arduino_compile_sketches::{driver::CompileSketches, error::Result, logger};
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// Run the application with the provided command-line arguments.
+///
+/// This is abstracted from main() to control what gets parsed as CLI args.
+/// Otherwise, cargo and cargo-nextest args would be parsed as CLI args, which is causes errors.
+async fn run(args: &[String]) -> Result<()> {
     // Initialize structured logging
     logger::init();
-    let mut app = CompileSketches::new_from_env()?;
+    let mut app = CompileSketches::from_cli(args)?;
     log::set_max_level(if app.sketch_compiler.verbose {
         log::LevelFilter::Debug
     } else {
@@ -14,14 +17,19 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[tokio::main]
+async fn main() -> Result<()> {
+    run(&std::env::args().collect::<Vec<String>>()).await
+}
+
 #[cfg(test)]
 mod tests {
     use arduino_compile_sketches::CompileSketchesError;
 
-    use super::main;
+    use super::run;
     use std::{env, fs};
 
-    fn blank_sketch(verbose: bool) {
+    async fn blank_sketch(verbose: bool) {
         // Setup a temporary workspace with a minimal sketch and a fake arduino-cli
         let tmp_dir = tempfile::TempDir::with_prefix("arduino-compile-sketches-bin-tests").unwrap();
         let ws = tmp_dir.path().to_path_buf();
@@ -54,7 +62,7 @@ mod tests {
         }
 
         // Run a single compile to exercise the fake CLI shim
-        let result = main();
+        let result = run(&[]).await;
         if !verbose {
             assert!(
                 result.is_ok(),
@@ -70,13 +78,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn verbose_blank_sketch() {
-        blank_sketch(true);
+    #[tokio::test]
+    async fn verbose_blank_sketch() {
+        blank_sketch(true).await;
     }
 
-    #[test]
-    fn basic_blank_sketch() {
-        blank_sketch(false);
+    #[tokio::test]
+    async fn basic_blank_sketch() {
+        blank_sketch(false).await;
     }
 }

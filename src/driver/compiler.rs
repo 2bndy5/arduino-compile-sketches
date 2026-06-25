@@ -163,6 +163,21 @@ impl SketchCompiler {
         // NOTE: I believe any user-provided `--warnings` options will override the above
         // `--warnings all` passed when `enable_warnings_report` is enabled.
         // This could be used as a filter for the counted warnings, if desirable.
+
+        // For parallel compilation, we need to keep the build cache isolated per task.
+        // Otherwise, the arduino-cli binary hits a race condition that surfaces with the message:
+        // > unable to rename '/path/to/build/cache/core.a'; reason: File exists
+        let task_id = tokio::task::id();
+        let build_cache_dir = tempfile::TempDir::with_prefix(task_id.to_string()).map_err(|e| {
+            CompileSketchesError::TempPathIo {
+                task: "create a temporary directory for the build cache",
+                source: e,
+            }
+        })?;
+        cmd.env(
+            "ARDUINO_BUILD_CACHE_PATH",
+            build_cache_dir.path().as_os_str(),
+        );
         let invoked_command = format!(
             "{} {}",
             cmd.get_program().to_string_lossy(),
