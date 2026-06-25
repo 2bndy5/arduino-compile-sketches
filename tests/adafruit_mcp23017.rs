@@ -30,6 +30,9 @@ const SKETCH_STABLE: &str = "examples/mcp23xxx_blink";
 /// Example modified by PR #89 -> measurable size delta when base vs head differ.
 const SKETCH_MODIFIED: &str = "examples/mcp23xxx_interrupt";
 
+/// Used as the name of the library dependency that is downloaded (via mockito instance).
+const DOWNLOAD_LIB_NAME: &str = "download-lib";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn to_posix_path(path: &Path) -> String {
@@ -325,9 +328,9 @@ async fn run_compile_test(params: TestParams) {
     let mut mock_server = mockito::Server::new_async().await;
     if params.use_download_lib {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/dep_fixtures/download-lib");
-        let zip_bytes = build_zip(&fixture, "download-lib");
+        let zip_bytes = build_zip(&fixture, DOWNLOAD_LIB_NAME);
         mock_server
-            .mock("GET", "/download-lib.zip")
+            .mock("GET", format!("/{DOWNLOAD_LIB_NAME}.zip").as_str())
             .with_body(zip_bytes)
             .create();
     }
@@ -363,7 +366,7 @@ async fn run_compile_test(params: TestParams) {
     }
 
     if params.use_download_lib {
-        let url = format!("{}/download-lib.zip", mock_server.url());
+        let url = format!("{}/{DOWNLOAD_LIB_NAME}.zip", mock_server.url());
         libraries_yaml.push(format!("source-url: {url}"));
     }
 
@@ -536,8 +539,7 @@ async fn pr_delta() {
     run_compile_test(TestParams {
         fqbn: "arduino:avr:uno",
         manager_platform: true,
-        // use_manager_lib: true,
-        // use_download_lib: true,
+        use_download_lib: true,
         use_real_repo: true,
         is_pr: true,
         enable_deltas: true,
