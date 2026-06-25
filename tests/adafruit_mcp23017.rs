@@ -431,7 +431,10 @@ async fn run_compile_test(params: TestParams) {
             "INPUT_ENABLE-WARNINGS-REPORT".to_string(),
             "false".to_string(),
         ),
-        ("INPUT_VERBOSE".to_string(), "false".to_string()),
+        (
+            "INPUT_VERBOSE".to_string(),
+            params.fail_on_compile_error.to_string(),
+        ),
         ("INPUT_CLI-VERSION".to_string(), "latest".to_string()),
         ("GITHUB_EVENT_PATH".to_string(), to_posix_path(&event_path)),
         ("GITHUB_WORKSPACE".to_string(), workspace_str),
@@ -442,6 +445,12 @@ async fn run_compile_test(params: TestParams) {
     } else {
         env_pairs.push(("GITHUB_EVENT_NAME".to_string(), "push".to_string()));
         env_pairs.push(("GITHUB_SHA".to_string(), HEAD_SHA.to_string()));
+    }
+    if !params.enable_deltas {
+        env_pairs.push((
+            "INPUT_CLI-COMPILE-FLAGS".to_string(),
+            "['--warnings', 'all']".to_string(),
+        ));
     }
     for (k, v) in &env_pairs {
         // SAFETY: tests serialize environment access with ENV_LOCK.

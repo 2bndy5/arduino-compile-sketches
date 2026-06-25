@@ -502,4 +502,53 @@ mod tests {
         assert!(!result.is_empty() && result.len() == 1);
         assert_eq!(result[0], fake_sketch_file.path());
     }
+
+    #[test]
+    #[cfg(feature = "bin")]
+    fn bad_platforms_input() {
+        let args = vec![
+            "test-bin".to_string(),
+            "--platforms".to_string(),
+            "not-a-valid-yaml".to_string(),
+        ];
+        let result = CompileSketches::from_cli(&args);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            CompileSketchesError::DecodeYamlDepList { .. }
+        ));
+    }
+
+    #[test]
+    #[cfg(feature = "bin")]
+    fn bad_libraries_input() {
+        let args = vec![
+            "test-bin".to_string(),
+            "--libraries".to_string(),
+            "not-a-valid-yaml".to_string(),
+        ];
+        let result = CompileSketches::from_cli(&args);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            CompileSketchesError::DecodeYamlDepList { .. }
+        ));
+    }
+
+    #[test]
+    #[cfg(feature = "bin")]
+    fn compile_flags_input_fallback() {
+        let args = vec![
+            "test-bin".to_string(),
+            "--cli-compile-flags".to_string(),
+            "flag1 flag2 flag3".to_string(),
+        ];
+        let result = CompileSketches::from_cli(&args);
+        assert!(result.is_ok());
+        let driver = result.unwrap();
+        assert_eq!(
+            driver.sketch_compiler.cli_compile_flags,
+            vec!["flag1", "flag2", "flag3"]
+        );
+    }
 }
