@@ -56,8 +56,10 @@ def "nur test html" [
 # Generate lcov.info
 #
 # Useful for codecov uploads or VSCode extensions like "Coverage Gutters".
-def "nur test lcov" [] {
-    run-cmd cargo llvm-cov report --lcov --output-path lcov.info
+def "nur test lcov" [
+    filename: string = "lcov.info" # The output file name
+] {
+    run-cmd cargo llvm-cov report --lcov --output-path $filename
 }
 
 

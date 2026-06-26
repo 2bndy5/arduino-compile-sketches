@@ -61,6 +61,7 @@ pub(crate) fn get_head_ref() -> Option<String> {
             _ => {} // treat all other events as unsupported
         }
     }
+    log::warn!("Failed to get head ref from event payload");
 
     let ws = env::var("GITHUB_WORKSPACE").unwrap_or_else(|_| ".".to_string());
     if let Ok(output) = Command::new("git")
@@ -247,23 +248,27 @@ mod tests {
         {
             // trigger `log::warn!()` calls
             crate::logger::init();
+            log::set_max_level(log::LevelFilter::Debug);
         }
 
         let tmp_dir = tempfile::tempdir().unwrap();
-        let repo = tmp_dir.path().to_path_buf();
-        let event_path = repo.join("event.json");
+        let repo = tmp_dir.path().join("tmp-repo-test");
+        let event_path = tmp_dir.path().join("event.json");
         fs::write(&event_path, "{}").unwrap();
         unsafe {
             std::env::set_var("GITHUB_WORKSPACE", repo.to_str().unwrap());
             std::env::set_var("GITHUB_EVENT_NAME", event_kind);
             // clear any env to force fallback
             std::env::set_var("GITHUB_EVENT_PATH", event_path.to_str().unwrap());
+            // remove the GITHUB_SHA env var to force fallback to git CLI on simulated push event
+            std::env::remove_var("GITHUB_SHA");
         }
 
         // create a git repo with head commit
+        fs::create_dir(&repo).unwrap();
         fs::write(repo.join("a.txt"), "one").unwrap();
         Command::new("git")
-            .arg("init")
+            .args(["-c", "init.defaultBranch=main", "init"])
             .current_dir(&repo)
             .status()
             .unwrap();
@@ -352,6 +357,17 @@ mod tests {
         let val = get_head_ref();
         assert_eq!(val.unwrap(), expected);
         drop(tmp);
+    }
+
+    #[test]
+    fn head_ref_for_push_from_env() {
+        let expected = "Some SHA";
+        unsafe {
+            std::env::set_var("GITHUB_EVENT_NAME", "push");
+            std::env::set_var("GITHUB_SHA", expected);
+        }
+        let val = get_head_ref();
+        assert_eq!(val.unwrap(), expected);
     }
 
     #[test]

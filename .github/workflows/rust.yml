@@ -22,9 +22,20 @@ env:
 
 permissions: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - windows-latest
+          # - macos-latest
     steps:
       - uses: actions/checkout@v6
         with:
@@ -37,7 +48,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NUR_VERSION: ${{ vars.NUR_VERSION }}
-        run: cargo binstall -y cargo-nextest cargo-llvm-cov nur@${NUR_VERSION}
+        run: cargo binstall -y cargo-nextest cargo-llvm-cov nur@${{ env.NUR_VERSION }}
       - name: Cache deps
         uses: actions/cache@v5 # zizmor: ignore[cache-poisoning]
         with:
@@ -48,12 +59,12 @@ jobs:
       - name: Run tests
         run: nur test --profile ci
       - name: Generate coverage reports
-        run: nur test lcov
+        run: nur test lcov ${{ runner.os }}.lcov
       - name: Upload coverage report as artifact
         uses: actions/upload-artifact@v7
         with:
-          name: lcov-report
-          path: lcov.info
+          name: lcov-report-${{ runner.os }}
+          path: ${{runner.os }}.lcov
           if-no-files-found: error
 
   coverage:
@@ -69,16 +80,18 @@ jobs:
       - name: Download coverage report artifact
         uses: actions/download-artifact@v8
         with:
-          name: lcov-report
-      - uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+          pattern: lcov-report-*
+      - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: lcov.info
+          # files: lcov.info
           fail_ci_if_error: true
 
   build:
     runs-on: ${{ matrix.os }}
     name: build ${{ matrix.target }}
+    env:
+      BIN_NAME: arduino-compile-sketches
     strategy:
       fail-fast: false
       matrix:
@@ -154,7 +167,7 @@ jobs:
         run: >-
           ${{ matrix.cross && 'cross' || 'cargo '}}
           build
-          --bin report-size-deltas
+          --bin ${{ env.BIN_NAME }}
           --release
           --target ${{ matrix.target }}
           --features bin
@@ -163,9 +176,9 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |-
-          tgt="report-size-deltas"
+          tgt="${{ env.BIN_NAME }}"
           mv "target/${{ matrix.target }}/release/${tgt}" "${tgt}"
-          arc_name="report-size-deltas-${{ matrix.target }}.tar.gz"
+          arc_name="${{ env.BIN_NAME }}-${{ matrix.target }}.tar.gz"
           tar -a -c -v -z -f "${arc_name}" "${tgt}" "LICENSE"
       - name: Prepare artifacts (windows)
         if: runner.os == 'Windows'
@@ -173,16 +186,16 @@ jobs:
         # `tar.exe` in powershell is different from `tar` in bash.
         # need to use `tar.exe` in powershell to create a valid zip file.
         run: |-
-          $tgt = "report-size-deltas"
+          $tgt = "${{ env.BIN_NAME }}"
           mv "target/${{ matrix.target }}/release/${tgt}.exe" "${tgt}.exe"
-          $arc_name = "report-size-deltas-${{ matrix.target }}.zip"
+          $arc_name = "${{ env.BIN_NAME }}-${{ matrix.target }}.zip"
           tar -a -c -v -f "${arc_name}" "${tgt}.exe" "LICENSE"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: report-size-deltas-${{ matrix.target }}
-          path: report-size-deltas-${{ matrix.target }}*
+          name: ${{ env.BIN_NAME }}-${{ matrix.target }}
+          path: ${{ env.BIN_NAME }}-${{ matrix.target }}*
           if-no-files-found: error
 
   release:
