@@ -268,7 +268,7 @@ mod tests {
         fs::create_dir(&repo).unwrap();
         fs::write(repo.join("a.txt"), "one").unwrap();
         Command::new("git")
-            .args(["-c", "init.defaultBranch=main", "init"])
+            .args(["init", "--initial-branch=main"])
             .current_dir(&repo)
             .status()
             .unwrap();

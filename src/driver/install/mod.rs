@@ -231,26 +231,42 @@ impl CompileSketches {
             // Don't let the tempdir be automatically deleted on drop.
             // We'll clean it up when exiting normally
             .keep();
-        let mut clone_cmd = Command::new("git");
-        if git_ref.is_none() {
-            clone_cmd.args(["clone", "--depth", "1", "--recursive"]);
-        }
-        clone_cmd.args([url, clone_path.to_string_lossy().to_string().as_str()]);
-        let clone_out =
-            clone_cmd
-                .output()
-                .map_err(|source| CompileSketchesError::GitCommandIo {
-                    task: "clone repository",
-                    source,
-                })?;
-        if !clone_out.status.success() {
+        let clone_out = Command::new("git")
+            .args([
+                "clone",
+                "--depth",
+                "1",
+                url,
+                clone_path.to_string_lossy().to_string().as_str(),
+            ])
+            .status()
+            .map_err(|source| CompileSketchesError::GitCommandIo {
+                task: "clone repository",
+                source,
+            })?;
+        if !clone_out.success() {
             return Err(CompileSketchesError::GitCommandFailed {
                 task: "clone repository",
             });
         }
         if let Some(gr) = git_ref {
             let git_ref = if gr == "latest" {
-                // Resolve "latest" as a git ref; fall back to the latest tag if "latest" doesn't exist.
+                // deepen the local checkout, so we can use rev-parse to resolve the latest tag
+                let fetch_status = Command::new("git")
+                    .current_dir(&clone_path)
+                    .args(["fetch", "--unshallow", "--tags"])
+                    .status()
+                    .map_err(|source| CompileSketchesError::GitCommandIo {
+                        task: "fetch history and tags for repository to resolve `latest`",
+                        source,
+                    })?;
+                if !fetch_status.success() {
+                    return Err(CompileSketchesError::GitCommandFailed {
+                        task: "fetch history and tags for repository to resolve `latest`",
+                    });
+                }
+
+                // Resolve "latest" as a git ref.
                 let rev_parsed = Command::new("git")
                     .current_dir(&clone_path)
                     .args(["rev-parse", gr])
@@ -264,6 +280,7 @@ impl CompileSketches {
                         .trim()
                         .to_string()
                 } else {
+                    // fall back to the latest tag if "latest" doesn't exist
                     let tag_list = Command::new("git")
                         .current_dir(&clone_path)
                         .args([
@@ -277,15 +294,17 @@ impl CompileSketches {
                             source,
                         })?;
                     if !tag_list.status.success() {
-                        return Err(CompileSketchesError::GitCommandFailed {
+                        return Err(CompileSketchesError::GitCommandFailedContext {
                             task: "list tags for resolving `latest`",
+                            output: String::from_utf8_lossy(&tag_list.stderr).to_string(),
                         });
                     }
                     let tags = String::from_utf8_lossy(&tag_list.stdout);
                     tags.lines()
                         .next()
-                        .ok_or_else(|| CompileSketchesError::GitCommandFailed {
+                        .ok_or_else(|| CompileSketchesError::GitCommandFailedContext {
                             task: "resolve `latest` git ref from available tags",
+                            output: tags.to_string(),
                         })?
                         .trim()
                         .to_string()
@@ -295,15 +314,15 @@ impl CompileSketches {
             };
 
             // Checkout the specified git ref
-            let checkout = Command::new("git")
+            let checkout_status = Command::new("git")
                 .current_dir(&clone_path)
                 .args(["checkout", &git_ref])
-                .output()
+                .status()
                 .map_err(|source| CompileSketchesError::GitCommandIo {
                     task: "checkout requested git ref",
                     source,
                 })?;
-            if !checkout.status.success() {
+            if !checkout_status.success() {
                 return Err(CompileSketchesError::GitCommandFailed {
                     task: "checkout requested git ref",
                 });
@@ -311,7 +330,7 @@ impl CompileSketches {
         }
 
         // init submodules as shallow
-        let submodule_out = Command::new("git")
+        let submodule_status = Command::new("git")
             .current_dir(&clone_path)
             .args([
                 "submodule",
@@ -321,12 +340,12 @@ impl CompileSketches {
                 "--depth",
                 "1",
             ])
-            .output()
+            .status()
             .map_err(|source| CompileSketchesError::GitCommandIo {
                 task: "initialize git submodules",
                 source,
             })?;
-        if !submodule_out.status.success() {
+        if !submodule_status.success() {
             return Err(CompileSketchesError::GitCommandFailed {
                 task: "initialize git submodules",
             });

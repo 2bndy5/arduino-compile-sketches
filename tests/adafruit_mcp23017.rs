@@ -380,7 +380,7 @@ async fn run_compile_test(params: TestParams) {
 
     if params.use_repo_lib {
         libraries_yaml.push(
-            "source-url: https://github.com/adafruit/Adafruit_BusIO.git\n  name: Adafruit BusIO"
+            "source-url: https://github.com/adafruit/Adafruit_BusIO.git\n  name: Adafruit BusIO\n  version: latest"
                 .to_string(),
         );
     } else if params.use_manager_lib || !params.fail_on_compile_error {
@@ -416,7 +416,7 @@ async fn run_compile_test(params: TestParams) {
 
     if let Some(platform_dir) = repo_platform_dir.as_ref() {
         platforms_yaml.push(format!(
-            "source-url: {}\n  name: test-repo_{unique_suffix}:arch",
+            "source-url: {}\n  name: test-repo_{unique_suffix}:arch\n  version: HEAD",
             platform_dir.source_url
         ));
     }
@@ -486,7 +486,7 @@ async fn run_compile_test(params: TestParams) {
 
     // ── 7. Construct CompileSketches ──────────────────────────────────────────
     // `new_from_env()` uses clap to process input args via env vars
-    let mut app = CompileSketches::from_cli(&[]).expect("build app from INPUT_* env vars");
+    let mut app = CompileSketches::from_cli(&[]).unwrap();
 
     // replace paths with test-specific paths
     let new_default_paths = DefaultPaths::new_in(&report_dir.path().join("test-workspace"));

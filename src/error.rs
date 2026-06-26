@@ -99,6 +99,18 @@ pub enum CompileSketchesError {
         task: &'static str,
     },
 
+    /// An error that occurs when a git command fails.
+    ///
+    /// This variant is similar to [`Self::GitCommandFailed`], but
+    /// it includes the output of the git command that failed.
+    #[error("git command failed while trying to {task}")]
+    GitCommandFailedContext {
+        /// The task that failed to execute.
+        task: &'static str,
+        /// The output of the git command that failed.
+        output: String,
+    },
+
     /// An error that occurs when a git command fails due to an I/O error.
     #[error("Failed to run git command while trying to {task}")]
     GitCommandIo {
