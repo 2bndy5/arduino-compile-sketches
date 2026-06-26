@@ -45,10 +45,11 @@ jobs:
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@dc19f1e48450eefe5a29b8da6c6b00a87d730b37 # v1.18.1
       - name: Install cargo-llvm-cov, cargo-nextest, and nur
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NUR_VERSION: ${{ vars.NUR_VERSION }}
-        run: cargo binstall -y cargo-nextest cargo-llvm-cov nur@${{ env.NUR_VERSION }}
+        run: cargo binstall -y cargo-nextest cargo-llvm-cov nur@${NUR_VERSION}
       - name: Cache deps
         uses: actions/cache@v5 # zizmor: ignore[cache-poisoning]
         with:
