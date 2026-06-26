@@ -76,7 +76,7 @@ impl CompileSketches {
             let manager_dep_name = if let Some(version) = &platform.version
                 && version != "latest"
             {
-                format!("{}@{}", platform.name, version)
+                format!("{}@{version}", platform.name)
             } else {
                 platform.name.clone()
             };

@@ -19,6 +19,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  BIN_NAME: arduino-compile-sketches
 
 permissions: {}
 
@@ -91,8 +92,6 @@ jobs:
   build:
     runs-on: ${{ matrix.os }}
     name: build ${{ matrix.target }}
-    env:
-      BIN_NAME: arduino-compile-sketches
     strategy:
       fail-fast: false
       matrix:
@@ -226,12 +225,12 @@ jobs:
       - name: Download built assets
         uses: actions/download-artifact@v8
         with:
-          pattern: report-size-deltas-*
+          pattern: ${{ env.BIN_NAME }}-*
           path: dist
           merge-multiple: true
       - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |-
-          files=$(ls dist/report-size-deltas*)
+          files=$(ls dist/${{ env.BIN_NAME }})
           gh release upload "${GITHUB_REF_NAME}" ${files}

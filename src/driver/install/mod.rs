@@ -88,11 +88,9 @@ impl CompileSketches {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            if bin_path.exists() {
-                let mut perms = fs::metadata(&bin_path)?.permissions();
-                perms.set_mode(0o755);
-                fs::set_permissions(&bin_path, perms)?;
-            }
+            let mut perms = fs::metadata(&bin_path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&bin_path, perms)?;
         }
         lock_file.unlock()?;
 
@@ -468,7 +466,7 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use crate::CompileSketchesError;
+    use crate::{CompileSketches, CompileSketchesError, driver::SketchCompiler};
 
     use super::get_archive_root_path;
 
@@ -493,5 +491,22 @@ mod tests {
             panic!("Expected ArchiveExtractionIo error, got: {:?}", err);
         };
         assert_eq!(task, "read extracted archive directory");
+    }
+
+    #[tokio::test]
+    async fn arduino_cli_is_some() {
+        let sketch_compiler = SketchCompiler {
+            arduino_cli_path: Some(PathBuf::new()),
+            ..Default::default()
+        };
+        let mut compile_sketches = CompileSketches {
+            sketch_compiler,
+            ..Default::default()
+        };
+        compile_sketches.install_arduino_cli().await.unwrap();
+        assert_eq!(
+            compile_sketches.sketch_compiler.arduino_cli_path.unwrap(),
+            PathBuf::new()
+        );
     }
 }

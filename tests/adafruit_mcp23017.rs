@@ -33,6 +33,9 @@ const SKETCH_MODIFIED: &str = "examples/mcp23xxx_interrupt";
 /// Used as the name of the library dependency that is downloaded (via mockito instance).
 const DOWNLOAD_LIB_NAME: &str = "download-lib";
 
+/// Used as the name of the library dependency that is downloaded (via mockito instance).
+const DOWNLOAD_PLATFORM_NAME: &str = "download-platform";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn to_posix_path(path: &Path) -> String {
@@ -220,18 +223,6 @@ fn build_zip(src_dir: &Path, top_name: &str) -> Vec<u8> {
     archive.finish().expect("finish zip").into_inner()
 }
 
-/// Build a GitHub `pull_request` event payload JSON string.
-fn pr_event_json(base_sha: &str, head_sha: &str) -> String {
-    serde_json::json!({
-        "action": "synchronize",
-        "pull_request": {
-            "base": { "sha": base_sha },
-            "head": { "sha": head_sha }
-        }
-    })
-    .to_string()
-}
-
 fn to_yaml_list(items: &[String]) -> String {
     items
         .iter()
@@ -242,11 +233,9 @@ fn to_yaml_list(items: &[String]) -> String {
 
 // ── TestParams + driver ───────────────────────────────────────────────────────
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct TestParams {
     fqbn: &'static str,
-    /// Install `arduino:avr` via the board manager.
-    manager_platform: bool,
     /// Symlink a local custom platform via path dependency.
     use_path_platform: bool,
     /// Clone and install a local git-backed custom platform.
@@ -255,21 +244,39 @@ struct TestParams {
     use_download_platform: bool,
     /// Add `"Adafruit BusIO"` via the library manager.
     use_manager_lib: bool,
+    /// Add `"Adafruit BusIO"` via git repo URL
+    use_repo_lib: bool,
     /// Serve `tests/dep_fixtures/download-lib/` via mockito and install it.
     use_download_lib: bool,
-    /// `true` -> clone the real repo at HEAD_SHA as the workspace.
-    /// `false` -> create a minimal local workspace (for error-path tests).
-    use_real_repo: bool,
     /// When `use_real_repo = false`, include a sketch with `#error` in the local workspace.
     include_bad_sketch: bool,
     /// PR event with delta report; `false` -> push event.
     is_pr: bool,
+    /// Whether to generate a delta report (requires `is_pr = true`).
     enable_deltas: bool,
+    /// Whether to propagate compile errors as Err.
     fail_on_compile_error: bool,
-    /// Whether `compile_sketches()` is expected to return `Err`.
-    expect_err: bool,
     /// Expected sketch count in the report (checked only when `!expect_err`).
     expected_sketch_count: usize,
+}
+
+impl Default for TestParams {
+    fn default() -> Self {
+        Self {
+            fqbn: "arduino:avr:uno",
+            use_path_platform: Default::default(),
+            use_repo_platform: Default::default(),
+            use_download_platform: Default::default(),
+            use_manager_lib: Default::default(),
+            use_repo_lib: Default::default(),
+            use_download_lib: Default::default(),
+            include_bad_sketch: Default::default(),
+            is_pr: Default::default(),
+            enable_deltas: Default::default(),
+            fail_on_compile_error: Default::default(),
+            expected_sketch_count: 2,
+        }
+    }
 }
 
 async fn run_compile_test(params: TestParams) {
@@ -280,7 +287,7 @@ async fn run_compile_test(params: TestParams) {
     let workspace_dir: TempDir;
     let sketch_paths: Vec<PathBuf>;
 
-    if params.use_real_repo {
+    if !(params.include_bad_sketch && params.fail_on_compile_error) {
         workspace_dir = clone_cached_head_workspace(TEST_REPO, HEAD_SHA);
         sketch_paths = vec![
             workspace_dir.path().join(SKETCH_STABLE),
@@ -337,9 +344,9 @@ async fn run_compile_test(params: TestParams) {
 
     if params.use_download_platform {
         let fixture = create_local_path_platform();
-        let zip_bytes = build_zip(fixture.path(), "download-platform");
+        let zip_bytes = build_zip(fixture.path(), DOWNLOAD_PLATFORM_NAME);
         mock_server
-            .mock("GET", "/download-platform.zip")
+            .mock("GET", format!("/{DOWNLOAD_PLATFORM_NAME}.zip").as_str())
             .with_body(zip_bytes)
             .create();
     }
@@ -348,7 +355,17 @@ async fn run_compile_test(params: TestParams) {
     let event_dir = TempDir::new().unwrap();
     let event_path = event_dir.path().join("event.json");
     if params.is_pr {
-        fs::write(&event_path, pr_event_json(BASE_SHA, HEAD_SHA)).unwrap();
+        fs::write(
+            &event_path,
+            serde_json::json!({
+                "pull_request": {
+                    "base": { "sha": BASE_SHA },
+                    "head": { "sha": HEAD_SHA }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
     } else {
         fs::write(
             &event_path,
@@ -361,7 +378,12 @@ async fn run_compile_test(params: TestParams) {
     let report_dir = TempDir::new().unwrap();
     let mut libraries_yaml = Vec::new();
 
-    if params.use_manager_lib || params.use_real_repo {
+    if params.use_repo_lib {
+        libraries_yaml.push(
+            "source-url: https://github.com/adafruit/Adafruit_BusIO.git\n  name: Adafruit BusIO"
+                .to_string(),
+        );
+    } else if params.use_manager_lib || !params.fail_on_compile_error {
         libraries_yaml.push("name: Adafruit BusIO".to_string());
     }
 
@@ -373,7 +395,7 @@ async fn run_compile_test(params: TestParams) {
     // If we're compiling examples from a cloned repo workspace, expose that
     // workspace root as a path-library so example `#include`/library resolution
     // can find the library sources in-tree.
-    if params.use_real_repo {
+    if !params.fail_on_compile_error {
         let ws_path = to_posix_path(workspace_dir.path());
         libraries_yaml.push(format!(
             "source-path: {ws_path}\n  name: RepoWorkspace_{unique_suffix}"
@@ -381,8 +403,8 @@ async fn run_compile_test(params: TestParams) {
     }
 
     let mut platforms_yaml = Vec::new();
-    if params.manager_platform {
-        platforms_yaml.push("name: arduino:avr".to_string());
+    if params.fqbn.starts_with("arduino:avr") {
+        platforms_yaml.push("name: arduino:avr\n  version: latest".to_string());
     }
 
     if let Some(platform_dir) = path_platform_dir.as_ref() {
@@ -400,7 +422,7 @@ async fn run_compile_test(params: TestParams) {
     }
 
     if params.use_download_platform {
-        let url = format!("{}/download-platform.zip", mock_server.url());
+        let url = format!("{}/{DOWNLOAD_PLATFORM_NAME}.zip", mock_server.url());
         platforms_yaml.push(format!(
             "source-url: {url}\n  destination-name: test-dl_{unique_suffix}:arch"
         ));
@@ -473,8 +495,8 @@ async fn run_compile_test(params: TestParams) {
     // ── 8. Run ────────────────────────────────────────────────────────────────
     let result = app.compile_sketches().await;
 
-    if params.expect_err {
-        assert!(result.is_err(), "expected compile_sketches() to return Err");
+    if params.fail_on_compile_error {
+        result.unwrap_err();
         return;
     }
     result.expect("compile_sketches() should succeed");
@@ -537,13 +559,9 @@ async fn run_compile_test(params: TestParams) {
 #[tokio::test]
 async fn pr_delta() {
     run_compile_test(TestParams {
-        fqbn: "arduino:avr:uno",
-        manager_platform: true,
         use_download_lib: true,
-        use_real_repo: true,
         is_pr: true,
         enable_deltas: true,
-        expected_sketch_count: 2,
         ..Default::default()
     })
     .await;
@@ -553,11 +571,7 @@ async fn pr_delta() {
 #[tokio::test]
 async fn push_no_delta() {
     run_compile_test(TestParams {
-        fqbn: "arduino:avr:uno",
-        manager_platform: true,
-        use_manager_lib: true,
-        use_real_repo: true,
-        expected_sketch_count: 2,
+        use_repo_lib: true,
         ..Default::default()
     })
     .await;
@@ -568,9 +582,7 @@ async fn push_no_delta() {
 async fn invalid_fqbn_fails() {
     run_compile_test(TestParams {
         fqbn: "bogus:fake:board",
-        manager_platform: false, // unknown vendor – nothing to install
         fail_on_compile_error: true,
-        expect_err: true,
         ..Default::default()
     })
     .await;
@@ -580,11 +592,8 @@ async fn invalid_fqbn_fails() {
 #[tokio::test]
 async fn compile_error_respected() {
     run_compile_test(TestParams {
-        fqbn: "arduino:avr:uno",
-        manager_platform: true,
         include_bad_sketch: true,
         fail_on_compile_error: true,
-        expect_err: true,
         ..Default::default()
     })
     .await;
@@ -595,10 +604,7 @@ async fn compile_error_respected() {
 #[tokio::test]
 async fn compile_error_ignored() {
     run_compile_test(TestParams {
-        fqbn: "arduino:avr:uno",
-        manager_platform: true,
         include_bad_sketch: true,
-        expected_sketch_count: 2, // good_sketch + bad_sketch both appear in report
         ..Default::default()
     })
     .await;
@@ -607,11 +613,7 @@ async fn compile_error_ignored() {
 #[tokio::test]
 async fn platform_path_dependency() {
     run_compile_test(TestParams {
-        fqbn: "arduino:avr:uno",
-        manager_platform: true,
         use_path_platform: true,
-        use_real_repo: true,
-        expected_sketch_count: 2,
         ..Default::default()
     })
     .await;
@@ -620,11 +622,7 @@ async fn platform_path_dependency() {
 #[tokio::test]
 async fn platform_repo_dependency() {
     run_compile_test(TestParams {
-        fqbn: "arduino:avr:uno",
-        manager_platform: true,
         use_repo_platform: true,
-        use_real_repo: true,
-        expected_sketch_count: 2,
         ..Default::default()
     })
     .await;
@@ -633,11 +631,7 @@ async fn platform_repo_dependency() {
 #[tokio::test]
 async fn platform_download_dependency() {
     run_compile_test(TestParams {
-        fqbn: "arduino:avr:uno",
-        manager_platform: true,
         use_download_platform: true,
-        use_real_repo: true,
-        expected_sketch_count: 2,
         ..Default::default()
     })
     .await;
