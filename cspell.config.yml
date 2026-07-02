@@ -15,6 +15,7 @@ words:
   - FQBN
   - gnueabi
   - gnueabihf
+  - mdbook
   - msvc
   - nextest
   - nushell
@@ -23,6 +24,7 @@ words:
   - reqwest
   - rsplit
   - rustup
+  - SAMD
   - saphyr
   - serde
   - startswith

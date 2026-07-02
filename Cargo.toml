@@ -1,8 +1,11 @@
 [package]
 name = "arduino-compile-sketches"
-version = "0.1.0"
+version = "0.0.0"
 description = "A CLI tool for compiling Arduino sketches and generating reports."
 edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/2bndy5/arduino-compile-sketches"
+homepage = "https://2bndy5.github.io/arduino-compile-sketches/"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

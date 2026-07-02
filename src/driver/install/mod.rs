@@ -254,6 +254,7 @@ impl CompileSketches {
                 // deepen the local checkout, so we can use rev-parse to resolve the latest tag
                 let fetch_status = Command::new("git")
                     .current_dir(&clone_path)
+                    // spell-checker: disable-next-line
                     .args(["fetch", "--unshallow", "--tags"])
                     .status()
                     .map_err(|source| CompileSketchesError::GitCommandIo {

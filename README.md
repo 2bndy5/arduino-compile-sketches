@@ -1,4 +1,12 @@
+
+<!-- ANCHOR: INTRO -->
+
 # arduino-compile-sketches
+
+[![Rust CI][rust-ci-badge]][rust-ci-link]
+[![codecov][codecov-badge]][codecov-link]
+[![Crates.io Version][crates.io-badge]][crates.io-link]
+[![docs.rs][docs.rs-badge]][docs.rs-link]
 
 This is a Rust port of the [original Github Action][og-action] (written in
 Python). It is meant to be a drop-in replacement with a bunch of improvements.
@@ -36,6 +44,8 @@ aside from occasionally merging dependabot updates.
 - No Python runtime required. This action ships a compiled binary executable
   instead.
 
+<!-- ANCHOR: CLI_CAVEATS -->
+
 > [!CAUTION]
 > When `enable-warnings-report` is enabled, the `--clean` flag is passed to
 > `arduino-cli compile`. This means warnings reports can only be generated from
@@ -46,14 +56,19 @@ aside from occasionally merging dependabot updates.
 > approach causes numerous problems when doing parallel compilations (and
 > tests).
 
+<!-- ANCHOR_END: CLI_CAVEATS -->
+<!-- ANCHOR: DELTA_CAVEATS -->
+
 > [!WARNING]
 > When `enable-deltas-report` is enabled, the `--revision` option is passed to
 > `git clone`. This means size delta reports can only be generated from
 > a version of git v2.49.0 or later.
 
+<!-- ANCHOR_END: DELTA_CAVEATS -->
+
 ## Inputs
 
-See CLI document for details about supported inputs.
+See the [Inputs document][inputs-link] for details about supported inputs.
 
 ## Example
 
@@ -70,3 +85,14 @@ See CLI document for details about supported inputs.
 [og-action]: https://github.com/arduino/compile-sketches
 [arduino-cli]: https://github.com/arduino/arduino-cli
 [colored-env-vars]: https://bixense.com/clicolors/
+[codecov-badge]: https://codecov.io/gh/2bndy5/arduino-compile-sketches/graph/badge.svg?token=MNPE7GIXNC
+[codecov-link]: https://codecov.io/gh/2bndy5/arduino-compile-sketches
+[rust-ci-badge]: https://github.com/2bndy5/arduino-compile-sketches/actions/workflows/rust.yml/badge.svg
+[rust-ci-link]: https://github.com/2bndy5/arduino-compile-sketches/actions/workflows/rust.yml
+[crates.io-badge]: https://img.shields.io/crates/v/arduino-compile-sketches
+[crates.io-link]: https://crates.io/crates/arduino-compile-sketches
+[docs.rs-badge]: https://img.shields.io/docsrs/arduino-compile-sketches
+[docs.rs-link]: https://docs.rs/arduino-compile-sketches/
+
+<!-- ANCHOR_END: INTRO -->
+[inputs-link]: https://2bndy5.github.io/arduino-compile-sketches

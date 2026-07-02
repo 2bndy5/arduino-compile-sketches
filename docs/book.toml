@@ -1,0 +1,16 @@
+# see mdbook docs: https://rust-lang.github.io/mdBook/
+[book]
+title = "arduino-compile-sketches"
+description = "Compiling Arduino sketches in CI"
+authors = ["2bndy5"]
+language = "en"
+
+[rust]
+edition = "2024"
+
+[output.html]
+default-theme = "ayu"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/2bndy5/arduino-compile-sketches"
+git-repository-icon = "fab-github"
+edit-url-template = "https://github.com/2bndy5/arduino-compile-sketches/edit/main/docs/{path}"

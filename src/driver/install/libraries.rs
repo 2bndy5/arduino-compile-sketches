@@ -67,13 +67,15 @@ impl CompileSketches {
                     }
                 }
             };
-
             self.install_from_path(
                 &source_path,
                 self.libraries_path.clone().as_path(),
                 dest_name,
                 true,
             )?;
+            todo!(
+                "We need to carve out an exception for paths installed in the current working directory because this path can affect the delta data calculation."
+            );
         }
         Ok(())
     }
