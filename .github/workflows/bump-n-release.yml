@@ -35,14 +35,14 @@ jobs:
     environment:
       name: bump-n-release
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.BUMP_N_RELEASE }}
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: true # needed for `git push`
 
-      - uses: cargo-bins/cargo-binstall@dc19f1e48450eefe5a29b8da6c6b00a87d730b37 # v1.18.1
+      - uses: cargo-bins/cargo-binstall@732870f031d2fb36309d0deaf36abcc704a7be65 # v1.20.1
       - run: cargo binstall -y nu@${NUSHELL_VERSION}
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -73,7 +73,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -83,7 +83,7 @@ jobs:
         with:
           python-version: '3.x'
       - name: setup uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
       - name: Generate a changelog
         env:
           GITHUB_REPO: ${{ github.repository }}
