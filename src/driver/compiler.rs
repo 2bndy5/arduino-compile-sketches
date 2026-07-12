@@ -73,6 +73,23 @@ pub(super) struct CompilationResult {
 ///
 /// Returns true if the checkout was successful, false otherwise.
 pub(super) fn checkout_base_ref(base_ref: &str) -> bool {
+    if let Ok(fetch_status) = Command::new("git")
+        .args(["fetch", "--depth=1", "origin", base_ref])
+        .status()
+        && !fetch_status.success()
+    {
+        log::warn!("Failed to `git fetch` from remote for base ref '{base_ref}'");
+        // spell-checker: disable-next-line
+        if let Ok(fetch_status) = Command::new("git").args(["fetch", "--unshallow"]).status()
+            && !fetch_status.success()
+        {
+            // spell-checker: disable-next-line
+            log::warn!("Failed to `git fetch --unshallow` from remote; moving to checkout anyway.");
+        }
+    }
+    // let `git checkout` be our source of operational truth.
+    // `git fetch` might fail for several reasons, but `git checkout` might still succeed if
+    // the base_ref is already present in the previous checkout's history.
     if let Ok(status) = Command::new("git")
         .args(["-c", "advice.detachedHead=false", "checkout", base_ref])
         .status()
