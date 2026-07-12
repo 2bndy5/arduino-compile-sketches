@@ -461,8 +461,6 @@ impl CompileSketches {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::panic)]
 
-    use crate::logger;
-
     use super::*;
     use std::fs;
 
@@ -490,10 +488,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "bin")]
     fn find_sketches() {
         let mut driver = CompileSketches::default();
-        logger::init();
+        #[cfg(feature = "bin")]
+        crate::logger::init();
         driver.sketch_paths.push(PathBuf::from("non-existent-path"));
         let fake_sketch_file = tempfile::NamedTempFile::with_suffix(".ino").unwrap();
         driver
