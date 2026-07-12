@@ -1,0 +1,118 @@
+name: arduino-compile-sketches
+description: >-
+  Compile Arduino sketches and produce a consumable JSON report(s).
+author: 2bndy5
+branding:
+  icon: "message-circle"
+  color: "blue"
+inputs:
+  cli-version:
+    description: >-
+      Version of Arduino CLI to use when building
+    default: "latest"
+    required: true
+  fqbn:
+    # spell-checker: disable
+    description: >-
+      Full qualified board name (FQBN) to use when compiling sketches.
+      This is often found in the Arduino core's board.txt file.
+      Or you can use `arduino-cli board listall` in a terminal.
+    # spell-checker: enable
+    default: "arduino:avr:uno"
+    required: true
+  libraries:
+    description: >-
+      YAML-format list of library dependencies to install
+    default: "- source-path: ./"
+    required: true
+  platforms:
+    description: >-
+      YAML-format list of platform dependencies to install
+    default: ""
+    required: true
+  sketch-paths:
+    description: >-
+      YAML-format list of paths containing sketches to compile.
+    default: "- examples"
+    required: true
+  cli-compile-flags:
+    description: >-
+      YAML-format list of flags to add to the Arduino CLI sketch compilation command.
+    default: ""
+    required: false
+  verbose:
+    description: >-
+      Set to true to show verbose output in the log
+    default: "false"
+    required: true
+  sketches-report-path:
+    description: >-
+      Path in which to save a JSON formatted file containing data from the sketch compilations
+    default: "sketches-reports"
+    required: true
+  enable-deltas-report:
+    description: >-
+      Set to true to determine the change in memory usage and compiler warnings of the compiled
+      sketches between the head and base refs of a PR.
+      This is force-disabled for events that are not triggered `on: pull_request`.
+    default: "false"
+    required: true
+  enable-warnings-report:
+    description: >-
+      Set to true to record the compiler warning count for each sketch compilation in the sketches
+      report
+    default: "false"
+    required: true
+  fail-on-compile-error:
+    description: >-
+      Set to false to continue successfully after compilation errors. Reports are generated
+      regardless of this setting. This only applies to the HEAD ref compilation. Compilation
+      failures for a base ref (when calculating size deltas) are always ignored but logged.
+    default: "true"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create temp bin directory
+      # this path will be used to store the binaries outside of workspace root
+      shell: bash
+      run: mkdir "${GITHUB_ACTION_PATH%/}/bin"
+    - name: Install cargo-binstall (unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: >-
+        curl -L --proto '=https' --tlsv1.2 -sSf
+        https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh
+        | bash
+    - name: Install cargo-binstall (windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: >-
+        Set-ExecutionPolicy Unrestricted
+        -Scope Process; iex
+        (iwr "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.ps1").Content
+    - name: Install arduino-compile-sketches binary
+      shell: bash
+      env:
+        STANDALONE_BIN_VER: '0.0.0'
+        GITHUB_TOKEN: ${{ github.token }}
+      run: >-
+        cargo-binstall -y
+        arduino-compile-sketches@${STANDALONE_BIN_VER}
+        --install-path "${GITHUB_ACTION_PATH%/}/bin"
+        --locked
+    - shell: bash
+      env:
+        INPUT_CLI-VERSION: ${{ inputs.cli-version }}
+        INPUT_FQBN: ${{ inputs.fqbn }}
+        INPUT_PLATFORMS: ${{ inputs.platforms }}
+        INPUT_LIBRARIES: ${{ inputs.libraries }}
+        INPUT_SKETCH-PATHS: ${{ inputs.sketch-paths }}
+        INPUT_CLI-COMPILE-FLAGS: ${{ inputs.cli-compile-flags }}
+        INPUT_VERBOSE: ${{ inputs.verbose }}
+        INPUT_FAIL-ON-COMPILE-ERROR: ${{ inputs.fail-on-compile-error }}
+        INPUT_ENABLE-DELTAS-REPORT: ${{ inputs.enable-deltas-report }}
+        INPUT_ENABLE-WARNINGS-REPORT: ${{ inputs.enable-warnings-report }}
+        INPUT_SKETCHES-REPORT-PATH: ${{ inputs.sketches-report-path }}
+      run: ${GITHUB_ACTION_PATH%/}/bin/arduino-compile-sketches

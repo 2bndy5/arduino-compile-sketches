@@ -1,0 +1,53 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - README.md
+  pull_request:
+    paths:
+      - 'docs/**'
+      - README.md
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: cargo-bins/cargo-binstall@732870f031d2fb36309d0deaf36abcc704a7be65 # v1.20.1
+      - name: Install mdbook
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall mdbook -y
+      - name: Build docs
+        run: mdbook build docs
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/book
+
+  deploy:
+    needs: [build]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write # to deploy to Pages
+      id-token: write # to verify the deployment originates from an appropriate source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/deploy-pages@v5
+        id: deployment

@@ -1,0 +1,39 @@
+version: "0.2"
+words:
+  - adafruit
+  - armv
+  - binstall
+  - bndy
+  - Boolish
+  - clippy
+  - cooldown
+  - endfor
+  - endgroup
+  - endmacro
+  - Falsey
+  - flate
+  - FQBN
+  - gnueabi
+  - gnueabihf
+  - mdbook
+  - msvc
+  - nextest
+  - nushell
+  - pipx
+  - pwsh
+  - reqwest
+  - rsplit
+  - rustup
+  - SAMD
+  - saphyr
+  - serde
+  - startswith
+  - thiserror
+  - tlsv
+  - topo
+  - zizmor
+ignorePaths:
+  - .gitattributes
+  - .gitignore
+  - tests/**/*.{json,txt}
+  - CHANGELOG.md

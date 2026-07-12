@@ -1,0 +1,11 @@
+# Nextest configuration for this repository
+# See https://nexte.st for full docs
+
+[profile.default]
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[profile.ci]
+failure-output = "final"
+
+[profile.debug]
+success-output = "final"

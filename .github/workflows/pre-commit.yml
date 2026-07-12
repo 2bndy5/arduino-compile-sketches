@@ -1,0 +1,109 @@
+name: pre-commit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  all-files:
+    # also lints python files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        id: python-setup
+        with:
+          python-version: 3.x
+      - name: Cache pre-commit environments
+        uses: actions/cache@v5
+        with:
+          path: '~/.cache/pre-commit'
+          key: pre-commit-${{ steps.python-setup.outputs.python-version }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: pipx run pre-commit run --show-diff-on-failure --color=always --all-files
+
+  lint-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        run: rustup update --no-self-update
+      - name: Cache deps
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: cargo-lint-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock') }}
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      # run again without features enabled to catch any issues with gated code
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo fmt --check
+
+  check-pr-title:
+    name: Check PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: rustup update --no-self-update
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@dc19f1e48450eefe5a29b8da6c6b00a87d730b37 # v1.18.1
+      - name: Install committed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall -y committed
+      - name: Get PR title
+        id: get-title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |-
+          pr_title=$(gh pr view "${PR_NUMBER}" --repo "${GH_REPO}" --json "title" -q ".title")
+          echo "title=${pr_title}" >> "${GITHUB_OUTPUT}"
+      - name: conventional-commit
+        env:
+          PR_TITLE: "${{ steps.get-title.outputs.title }}"
+          COMMITTED_CONFIG: .config/committed.toml
+        run: echo "${PR_TITLE}" | committed --config "${COMMITTED_CONFIG}" --commit-file -
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: latest
+      - name: spell check
+        env:
+          PR_TITLE: "${{ steps.get-title.outputs.title }}"
+        run: echo "${PR_TITLE}" | npx cspell-cli lint stdin
+
+  lint-ci-workflows:
+    name: Lint CI Workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Lint GitHub Workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pipx run
+          zizmor
+          --format github
+          ./
