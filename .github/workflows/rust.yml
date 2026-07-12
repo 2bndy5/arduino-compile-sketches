@@ -38,13 +38,13 @@ jobs:
           - windows-latest
           # - macos-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Setup Rust
         run: rustup update --no-self-update
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@dc19f1e48450eefe5a29b8da6c6b00a87d730b37 # v1.18.1
+        uses: cargo-bins/cargo-binstall@732870f031d2fb36309d0deaf36abcc704a7be65 # v1.20.1
       - name: Install cargo-llvm-cov, cargo-nextest, and nur
         shell: bash
         env:
@@ -52,7 +52,7 @@ jobs:
           NUR_VERSION: ${{ vars.NUR_VERSION }}
         run: cargo binstall -y cargo-nextest cargo-llvm-cov nur@${NUR_VERSION}
       - name: Cache deps
-        uses: actions/cache@v5 # zizmor: ignore[cache-poisoning]
+        uses: actions/cache@v6 # zizmor: ignore[cache-poisoning]
         with:
           path: |
             ~/.cargo/registry/index/
@@ -79,7 +79,7 @@ jobs:
       name: test-coverage
       url: https://app.codecov.io/gh/2bndy5/arduino-compile-sketches
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Download coverage report artifact
@@ -148,7 +148,7 @@ jobs:
             cross: false
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -159,7 +159,7 @@ jobs:
 
       - name: Install cargo-binstall
         if: matrix.cross
-        uses: cargo-bins/cargo-binstall@dc19f1e48450eefe5a29b8da6c6b00a87d730b37 # v1.18.1
+        uses: cargo-bins/cargo-binstall@732870f031d2fb36309d0deaf36abcc704a7be65 # v1.20.1
       - name: Install cross (cargo cross compiler)
         if: matrix.cross
         env:
@@ -211,7 +211,7 @@ jobs:
       # needed to upload release-assets
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Install Rust
@@ -219,7 +219,7 @@ jobs:
 
       - name: Establish provenance
         id: auth
-        uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
       - name: Publish package
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
