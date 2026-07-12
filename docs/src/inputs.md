@@ -239,20 +239,27 @@ This report may be used with the
 
 ### How it works
 
-The sketch is first compiled with the current repository state/commit.
-The resulting data is stored to the sketches report.
-Next, in a temporary directory, the same repository is cloned to the branch's
-base commit. Once compilation of the temporary [`git checkout`][git-checkout]
-is done, the resulting data is also stored to the sketches report.
-Now, the data from both compilations is processed for comparison.
-The delta is the change in the data between the two compilations.
-This delta data is also stored to the sketches report.
+1. The sketch is first compiled with the current repository state/commit.
+   The resulting data is stored to the sketches report.
+2. Next, the same repository is checked out to the branch's base commit.
+   Once compilation of the new [`git checkout`][git-checkout] is done,
+   the resulting data is also stored to the sketches report.
+3. Now, the data from both compilations is processed for comparison.
+   The delta is the change in the data between the two compilations.
+   This delta data is also stored to the sketches report.
 
-Dependencies defined via the [`libraries`](#libraries) or
-[`platforms`](#platforms) inputs are installed via
-[symlinks](https://en.wikipedia.org/wiki/Symbolic_link), meaning dependencies
-from local paths under `$GITHUB_WORKSPACE` reflect the deltas checkouts even
-though they are installed outside `$GITHUB_WORKSPACE`.
+> [!CAUTION]
+> Installing dependencies via explicit paths ([`libraries`](#libraries) or
+> [`platforms`](#platforms) inputs) should be located according to the
+> repository's contents. Meaning, a [`git checkout`][git-checkout] may not be
+> possible if there are untracked files in the git repository.
+
+Dependencies specified as explicit paths are installed via
+[symlinks](https://en.wikipedia.org/wiki/Symbolic_link).
+Meaning dependencies from local paths under the repository's root
+(the working directory) are synchronized with the git checkouts.
+Any dependencies installed via explicit paths outside the repository
+directory remain unchanged despite any git checkout performed.
 
 [git-checkout]: https://git-scm.com/docs/git-checkout
 

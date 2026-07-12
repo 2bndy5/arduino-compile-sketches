@@ -24,10 +24,10 @@ const BASE_SHA: &str = "0e82c8d873037ff2522b9167ac20433ac23ef0d4";
 /// This is the only SHA that differs for `mcp23xxx_interrupt`.
 const HEAD_SHA: &str = "6f92c72afa71e7b47eef2227580c7c3f30bffc26";
 
-/// Example whose tree-SHA is **identical** at both commits -> near-zero delta.
+/// Example whose tree-SHA is **identical** at both commits.
 const SKETCH_STABLE: &str = "examples/mcp23xxx_blink";
 
-/// Example modified by PR #89 -> measurable size delta when base vs head differ.
+/// Example modified by PR #89 -> cannot calc delta for base ref.
 const SKETCH_MODIFIED: &str = "examples/mcp23xxx_interrupt";
 
 /// Used as the name of the library dependency that is downloaded (via mockito instance).
@@ -99,12 +99,12 @@ fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
         run_git(
             &repo_dir,
             &["fetch", "origin", head_sha, "--depth", "3"],
-            "fetch cached head commit",
+            "fetch head commit from cached repo",
         );
         run_git(
             &repo_dir,
             &["checkout", "-f", head_sha],
-            "checkout cached head commit",
+            "checkout head commit in cached repo",
         );
     }
     lock_file.unlock().expect("unlock cache lock file");
@@ -314,6 +314,7 @@ async fn run_compile_test(params: TestParams) {
         } else {
             vec![good_dir]
         };
+        run_git(workspace_dir.path(), &["init"], "init faulty workspace");
     }
 
     let workspace_str = workspace_dir.path().to_string_lossy().to_string();

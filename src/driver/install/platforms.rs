@@ -219,14 +219,14 @@ impl CompileSketches {
         let mut split_iter = name.split(':');
         let vendor = split_iter
             .next()
-            .and_then(|s| if !s.is_empty() { Some(s) } else { None })
+            .filter(|&s| !s.is_empty())
             .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
                 key: "name's vendor",
                 id: name.to_string(),
             })?;
         let arch = split_iter
             .next()
-            .and_then(|s| if !s.is_empty() { Some(s) } else { None })
+            .filter(|&s| !s.is_empty())
             .ok_or_else(|| CompileSketchesError::PlatformDepMissingField {
                 key: "name's architecture",
                 id: name.to_string(),

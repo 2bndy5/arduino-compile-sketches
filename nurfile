@@ -74,6 +74,41 @@ def "nur docs" [
     run-cmd ...$cmd
 }
 
+# Generate user-facing (supplemental) docs
+#
+# Requires mdbook installed.
+def "nur book" [
+    --serve = false, # Serve the book locally
+    --open = false, # Open the built docs in your browser
+] {
+    mut cmd = if $serve {
+        ["serve", "docs"]
+    } else {
+        ["build", "docs"]
+    }
+    if $open {
+        $cmd = $cmd | append '--open'
+    }
+    run-cmd mdbook ...$cmd
+}
+
+# Serve the user-facing (supplemental) docs via localhost.
+#
+# Requires mdbook installed.
+def "nur book serve" [
+    --open (-o) # Open the built docs in your browser
+] {
+    nur book --serve true --open $open
+}
+
+# Build user-facing (supplemental) docs.
+#
+# Requires mdbook installed.
+def "nur book build" [
+    --open (-o) # Open the built docs in your browser
+] {
+    nur book --serve false --open $open
+}
 
 # Run clippy and rustfmt
 export def "nur lint" [

@@ -15,17 +15,6 @@ use std::{
 };
 
 #[derive(Debug)]
-pub(super) enum CompileRef {
-    Head,
-    Base,
-}
-
-pub(super) struct CompileTaskEnvelope {
-    pub(super) compile_ref: CompileRef,
-    pub(super) result: CompilationTaskResult,
-}
-
-#[derive(Debug)]
 pub(super) enum CompilationTaskResult {
     Ok {
         relative_sketch_path: String,
@@ -80,42 +69,19 @@ pub(super) struct CompilationResult {
     pub(super) invoked_cmd: String,
 }
 
-pub(super) struct BaseRefCheckout {
-    pub base_ref: String,
-    pub temp_dir: tempfile::TempDir,
-}
-
-pub(super) fn checkout_base_ref(base_ref: &str, repo: &str) -> Result<Option<BaseRefCheckout>> {
-    let repo_url = format!("https://github.com/{repo}.git");
-
-    let tmp = tempfile::tempdir()?;
-    let tmp_path = tmp.path();
-    // Try a shallow clone of the specific ref into the temp dir.
+/// Try to checkout the given base_ref in the current working directory.
+///
+/// Returns true if the checkout was successful, false otherwise.
+pub(super) fn checkout_base_ref(base_ref: &str) -> bool {
     if let Ok(status) = Command::new("git")
-        .args([
-            "-c",
-            "advice.detachedHead=false",
-            "clone",
-            "--recurse-submodules",
-            "--shallow-submodules",
-            "--depth",
-            "1",
-            "--revision",
-            base_ref,
-            &repo_url,
-            ".",
-        ])
-        .current_dir(tmp_path)
+        .args(["-c", "advice.detachedHead=false", "checkout", base_ref])
         .status()
         && status.success()
     {
-        Ok(Some(BaseRefCheckout {
-            base_ref: base_ref.to_string(),
-            temp_dir: tmp,
-        }))
+        true
     } else {
         log::warn!("Shallow clone of ref '{base_ref}' failed.");
-        Ok(None)
+        false
     }
 }
 
@@ -230,47 +196,34 @@ impl CompileSketches {
     /// Join the given `compile_jobs` and extract data from stdout for each sketch.
     ///
     /// Returns a tuple of:
-    /// - `Vec<Sketch>`: the compilation reports for sketches compiled from the head ref
-    /// - `Vec<Sketch>`: the compilation reports for sketches compiled from the base ref
-    /// - `bool`: summary success of head ref compilations (not base ref compilations)
+    /// - `Vec<Sketch>`: the compilation reports for the compiled sketches
+    /// - `bool`: summary success of head ref compilations
     pub(super) async fn join_tasks(
         &self,
-        mut compile_jobs: JoinSet<CompileTaskEnvelope>,
-        base_ref_checkout: Option<BaseRefCheckout>,
+        mut compile_jobs: JoinSet<CompilationTaskResult>,
+        base_ref_checkout: Option<&str>,
         sketch_count: usize,
-    ) -> Result<(Vec<Sketch>, Vec<Sketch>, bool)> {
+    ) -> Result<(Vec<Sketch>, bool)> {
         let mut sketch_reports = Vec::with_capacity(sketch_count);
-        let mut base_sketch_reports = Vec::with_capacity(if base_ref_checkout.is_some() {
-            sketch_count
-        } else {
-            0
-        });
         let mut all_compilations_successful = true;
         while let Some(task_result) = compile_jobs.join_next().await {
             let task_result = task_result?;
 
             let base_ref_str = base_ref_checkout
                 .as_ref()
-                .and_then(|base| {
-                    if matches!(task_result.compile_ref, CompileRef::Base) {
-                        Some(format!(" (at base ref {})", base.base_ref))
-                    } else {
-                        None
-                    }
+                .map(|base| {
+                    // base_ref is Some if the task_result is for the base ref compilation, otherwise it is None.
+                    format!(" (at base ref {base})")
                 })
                 .unwrap_or_default();
 
             match task_result {
-                CompileTaskEnvelope {
-                    compile_ref,
-                    result:
-                        CompilationTaskResult::Ok {
-                            relative_sketch_path,
-                            output,
-                            success,
-                            invoked_cmd,
-                            duration,
-                        },
+                CompilationTaskResult::Ok {
+                    relative_sketch_path,
+                    output,
+                    success,
+                    invoked_cmd,
+                    duration,
                 } => {
                     // task completed, so log it.
                     log::info!(
@@ -282,9 +235,7 @@ impl CompileSketches {
                             target: "CI_LOG_CMD",
                             "::error::Compilation failed for {relative_sketch_path}{base_ref_str}",
                         );
-                        if matches!(compile_ref, CompileRef::Head) {
-                            all_compilations_successful = false;
-                        }
+                        all_compilations_successful = false;
                         log::error!(target: "CI_LOG_CMD", "{output}");
                     } else if self.sketch_compiler.verbose {
                         log::debug!(target: "CI_LOG_CMD", "{output}");
@@ -317,20 +268,12 @@ impl CompileSketches {
                         sizes,
                         warnings,
                     };
-                    if matches!(compile_ref, CompileRef::Base) {
-                        base_sketch_reports.push(sketch);
-                    } else {
-                        sketch_reports.push(sketch);
-                    }
+                    sketch_reports.push(sketch);
                 }
-                CompileTaskEnvelope {
-                    compile_ref,
-                    result:
-                        CompilationTaskResult::Err {
-                            relative_sketch_path,
-                            error,
-                            duration,
-                        },
+                CompilationTaskResult::Err {
+                    relative_sketch_path,
+                    error,
+                    duration,
                 } => {
                     // if task failed to execute (I/O problems): just log it and move on.
                     log::info!(
@@ -338,20 +281,13 @@ impl CompileSketches {
                         "::group::Compilation task failed for {relative_sketch_path}{base_ref_str}"
                     );
                     log::error!(target: "CI_LOG_CMD", "::error::{error}");
-                    if matches!(compile_ref, CompileRef::Head) {
-                        // overall compilation failure is not affected by any base ref compilations
-                        all_compilations_successful = false;
-                    }
+                    all_compilations_successful = false;
                     log::info!(target: "CI_LOG_CMD", "::endgroup::");
                     log::info!("Compilation time elapsed: {}", fmt_duration(&duration));
                 }
             }
         }
-        Ok((
-            sketch_reports,
-            base_sketch_reports,
-            all_compilations_successful,
-        ))
+        Ok((sketch_reports, all_compilations_successful))
     }
 }
 
@@ -392,23 +328,13 @@ mod tests {
         let sketch = sketch_path.join("test_sketch.ino");
 
         let mut compile_jobs = JoinSet::new();
-        compile_jobs.spawn_blocking(move || CompileTaskEnvelope {
-            compile_ref: CompileRef::Head,
-            result: compile_sketch_task(
-                compiler,
-                sketch,
-                sketch_path.to_string_lossy().to_string(),
-            ),
+        compile_jobs.spawn_blocking(move || {
+            compile_sketch_task(compiler, sketch, sketch_path.to_string_lossy().to_string())
         });
 
-        let (sketches, base_sketches, success) =
-            driver.join_tasks(compile_jobs, None, 1).await.unwrap();
+        let (sketches, success) = driver.join_tasks(compile_jobs, None, 1).await.unwrap();
         assert!(!success, "overall compilation reported as successful");
         assert!(sketches.is_empty(), "sketch reports should be empty");
-        assert!(
-            base_sketches.is_empty(),
-            "base sketch reports should be empty"
-        );
     }
 
     #[test]
@@ -416,10 +342,7 @@ mod tests {
         #[cfg(feature = "bin")]
         crate::logger::init();
 
-        let result = checkout_base_ref("bogus-ref", "bogus-repo").unwrap();
-        assert!(
-            result.is_none(),
-            "Expected `None` when checkout of base ref fails"
-        );
+        let result = checkout_base_ref("bogus-ref");
+        assert!(!result, "Expected `None` when checkout of base ref fails");
     }
 }

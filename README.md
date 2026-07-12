@@ -30,7 +30,9 @@ aside from occasionally merging dependabot updates.
   environment variables and event payload (where applicable).
 - Compile sketches in parallel. This also applies to compilation of the
   project's base ref when triggered by a PR event and `enable-deltas-report` is
-  `true`.
+  `true`. Parallel compilation of sketches' HEAD ref is done separately from
+  compilation of sketches' base ref. Meaning, the same repository path is used for
+  both batches of parallel jobs, where the base ref is fetched by `git checkout`.
 - Output sketch name on compilation failure.
 - Show the compilation command used in the workflows' logs.
 - Cache the installed [arduino-cli] for consecutive steps in the same job. This

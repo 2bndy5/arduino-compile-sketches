@@ -17,7 +17,7 @@ use crate::{
 mod compiler;
 mod install;
 
-use self::compiler::{CompileRef, CompileTaskEnvelope, checkout_base_ref, compile_sketch_task};
+use self::compiler::{checkout_base_ref, compile_sketch_task};
 use crate::report::{apply_base_report, get_board_sizes_from_summary, get_sizes_summary_report};
 pub use compiler::SketchCompiler;
 
@@ -301,71 +301,67 @@ impl CompileSketches {
         let repo = env::var("GITHUB_REPOSITORY")
             .map_err(|e| CompileSketchesError::EnvVar("GITHUB_REPOSITORY", e))?;
 
-        // Only compile the base ref for pull requests.
-        let is_pr_event = env::var("GITHUB_EVENT_NAME").is_ok_and(|v| v == "pull_request");
-        let base_ref_checkout = if self.enable_deltas_report
-            && is_pr_event
-            && let base_ref =
-                get_base_ref().ok_or_else(|| CompileSketchesError::UnknownGitRef("base"))?
-        {
-            // Clone base ref once so both head and base compilations can share one JoinSet pipeline.
-            if let Some(base_checkout) = checkout_base_ref(&base_ref, &repo)? {
-                Some(base_checkout)
-            } else {
-                log::warn!("Failed to checkout base ref {base_ref}; deltas will be skipped");
-                None
-            }
-        } else {
-            None
-        };
-
         let mut compile_jobs = JoinSet::new();
 
-        for sketch in sketches.into_iter() {
+        for sketch in &sketches {
             let compiler = self.sketch_compiler.clone();
-            let relative_sketch_path = path_relative_to_workspace(&sketch)?;
+            let relative_sketch_path = path_relative_to_workspace(sketch)?;
 
             // Head ref task.
             let sketch_for_head = sketch.clone();
-            let rel_for_head = relative_sketch_path.clone();
-            compile_jobs.spawn_blocking(move || CompileTaskEnvelope {
-                compile_ref: CompileRef::Head,
-                result: compile_sketch_task(compiler, sketch_for_head, rel_for_head),
+            compile_jobs.spawn_blocking(move || {
+                compile_sketch_task(compiler, sketch_for_head, relative_sketch_path)
             });
-
-            // Base ref task (optional).
-            if let Some(base_ref) = &base_ref_checkout {
-                let compiler = self.sketch_compiler.clone();
-                let sketch_in_base = base_ref.temp_dir.path().join(&relative_sketch_path);
-                if sketch_in_base.exists() {
-                    compile_jobs.spawn_blocking(move || CompileTaskEnvelope {
-                        compile_ref: CompileRef::Base,
-                        result: compile_sketch_task(compiler, sketch_in_base, relative_sketch_path),
-                    });
-                } else {
-                    log::info!(
-                        "Sketch path {} does not exist in base ref {}; likely introduced on head ref. Skipping compilation for this sketch on base ref.",
-                        relative_sketch_path,
-                        base_ref.base_ref
-                    );
-                }
-            }
         }
 
-        // After parallel compilation, we're done with the temp checkout of the base ref.
-        // Dropping it will automatically purge the temp directory.
-        // Passing ownership to `join_tasks()` implies the object is dropped afterward.
-        let (mut sketch_reports, base_sketch_reports, all_compilations_successful) = self
-            .join_tasks(compile_jobs, base_ref_checkout, sketch_count)
-            .await?;
+        // compile sketches for head ref
+        let (mut sketch_reports, all_compilations_successful) =
+            self.join_tasks(compile_jobs, None, sketch_count).await?;
 
+        // get head ref now in case we need to use `git rev-parse`.
+        // a checkout of the base ref will change the head ref.
         let commit_hash =
             get_head_ref().ok_or_else(|| CompileSketchesError::UnknownGitRef("head"))?;
         let commit_url = format!("https://github.com/{repo}/commit/{commit_hash}");
 
-        if self.enable_deltas_report {
+        // Compile sketches for base ref if enabled and if this is a pull request event.
+        if self.enable_deltas_report
+            && env::var("GITHUB_EVENT_NAME").is_ok_and(|v| v == "pull_request")
+            && let base_ref =
+                get_base_ref().ok_or_else(|| CompileSketchesError::UnknownGitRef("base"))?
+        {
+            let mut compile_jobs = JoinSet::new();
+            let mut sketch_count = 0;
+
+            // Checkout base ref in same path so compilations can use any libraries/platforms
+            // installed via relative paths under the repository root.
+            if checkout_base_ref(&base_ref) {
+                for sketch in &sketches {
+                    let relative_sketch_path = path_relative_to_workspace(sketch)?;
+                    let sketch_abs_path = sketch.clone();
+                    let compiler = self.sketch_compiler.clone();
+                    if sketch.exists() {
+                        compile_jobs.spawn_blocking(move || {
+                            compile_sketch_task(compiler, sketch_abs_path, relative_sketch_path)
+                        });
+                        sketch_count += 1;
+                    } else {
+                        log::info!(
+                            "Sketch path {relative_sketch_path} does not exist in base ref {base_ref}; likely introduced on head ref. Skipping compilation for this sketch on base ref.",
+                        );
+                    }
+                }
+            } else {
+                log::warn!("Failed to checkout base ref {base_ref}; deltas will be skipped");
+            }
+
+            // now let the compilation tasks complete and merge the results with head ref data.
+            let (base_sketch_reports, _) = self
+                .join_tasks(compile_jobs, Some(base_ref.as_str()), sketch_count)
+                .await?;
             apply_base_report(&mut sketch_reports, &base_sketch_reports);
-        };
+        }
+
         let board_sizes = {
             let sizes_summary = get_sizes_summary_report(&sketch_reports);
             get_board_sizes_from_summary(&sizes_summary)
