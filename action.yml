@@ -12,8 +12,12 @@ inputs:
     default: "latest"
     required: true
   fqbn:
+    # spell-checker: disable
     description: >-
-      Full qualified board name, with Boards Manager URL if needed
+      Full qualified board name (FQBN) to use when compiling sketches.
+      This is often found in the Arduino core's board.txt file.
+      Or you can use `arduino-cli board listall` in a terminal.
+    # spell-checker: enable
     default: "arduino:avr:uno"
     required: true
   libraries:
@@ -48,15 +52,23 @@ inputs:
     required: true
   enable-deltas-report:
     description: >-
-      Set to true to cause the action to determine the change in memory usage and compiler warnings of the compiled
-      sketches between the head and base refs of a PR and the immediate parent commit of a push
+      Set to true to determine the change in memory usage and compiler warnings of the compiled
+      sketches between the head and base refs of a PR.
+      This is force-disabled for events that are not triggered `on: pull_request`.
     default: "false"
     required: true
   enable-warnings-report:
     description: >-
-      Set to true to cause the action to record the compiler warning count for each sketch compilation in the sketches
+      Set to true to record the compiler warning count for each sketch compilation in the sketches
       report
     default: "false"
+    required: true
+  fail-on-compile-error:
+    description: >-
+      Set to false to continue successfully after compilation errors. Reports are generated
+      regardless of this setting. This only applies to the HEAD ref compilation. Compilation
+      failures for a base ref (when calculating size deltas) are always ignored but logged.
+    default: "true"
     required: true
 
 runs:
