@@ -260,6 +260,10 @@ mod tests {
 "#;
         let map: Vec<HashMap<String, String>> = serde_saphyr::from_str(yaml).unwrap();
         let deps = Dependencies::from_input(map).unwrap();
+        assert!(!deps.manager.is_empty());
+        assert!(!deps.path.is_empty());
+        assert!(!deps.repository.is_empty());
+        assert!(!deps.download.is_empty());
         for dep in &deps.download {
             assert_eq!(dep.source_url, "https://example.com/download-platform.zip");
             assert_eq!(dep.destination_name.as_deref(), Some("VENDOR:ARCH"));

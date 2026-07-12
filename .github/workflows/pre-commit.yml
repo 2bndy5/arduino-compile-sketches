@@ -45,7 +45,7 @@ jobs:
           key: cargo-lint-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock') }}
       - run: cargo clippy --all-targets --all-features -- -D warnings
       # run again without features enabled to catch any issues with gated code
-      - run: cargo check --all-targets -- -D warnings
+      - run: cargo clippy --all-targets -- -D warnings
       - run: cargo fmt --check
 
   check-pr-title:

@@ -4,6 +4,7 @@ use std::{
     collections::HashSet,
     env, fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tokio::task::JoinSet;
 
@@ -164,6 +165,7 @@ impl Default for CompileSketches {
         )]
         let client = reqwest::ClientBuilder::new()
             .user_agent(USER_AGENT)
+            .timeout(Duration::from_mins(2))
             .build()
             .expect("Failed to build HTTP client");
         Self {
@@ -237,7 +239,10 @@ impl CompileSketches {
         let default_paths = DefaultPaths::default();
 
         // Build HTTP client with default User-Agent
-        let http_client = Client::builder().user_agent(USER_AGENT).build()?;
+        let http_client = Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(Duration::from_mins(2))
+            .build()?;
         let sketch_compiler = SketchCompiler {
             fqbn: args.fqbn,
             cli_compile_flags,
