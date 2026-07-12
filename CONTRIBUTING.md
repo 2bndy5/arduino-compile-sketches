@@ -96,6 +96,11 @@ this project into tasks.
 Unit tests are performed using [cargo-nextest] while coverage is measured by
 [cargo-llvm-cov].
 
+> [!WARNING]
+> During the integration tests, the `--revision` option is passed to
+> `git clone`. This means tests can only be run with a version of git
+> v2.54.0 or later.
+
 #### Run the tests
 
 ```shell

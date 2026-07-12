@@ -59,14 +59,6 @@ aside from occasionally merging dependabot updates.
 > tests).
 
 <!-- ANCHOR_END: CLI_CAVEATS -->
-<!-- ANCHOR: DELTA_CAVEATS -->
-
-> [!WARNING]
-> When `enable-deltas-report` is enabled, the `--revision` option is passed to
-> `git clone`. This means size delta reports can only be generated from
-> a version of git v2.49.0 or later.
-
-<!-- ANCHOR_END: DELTA_CAVEATS -->
 
 ## Inputs
 
@@ -75,7 +67,7 @@ See the [Inputs document][inputs-link] for details about supported inputs.
 ## Example
 
 ```yaml
-- uses: 2bndy5/arduino-compile-sketches@v1
+- uses: 2bndy5/arduino-compile-sketches@v0.0.0
   with:
     fqbn: "arduino:avr:uno"
     libraries: |

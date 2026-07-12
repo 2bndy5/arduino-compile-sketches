@@ -138,7 +138,7 @@ def gh-release [tag: string] {
 #
 # The acceptable `component` values are what `cargo set-version` accepts:
 #
-# - manor
+# - major
 # - minor
 # - patch
 def main [component: string] {

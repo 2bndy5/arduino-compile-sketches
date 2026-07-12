@@ -85,6 +85,7 @@ jobs:
       - name: Generate a changelog
         env:
           GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: >-
          uvx --constraints .github/requirements.txt
          git-cliff

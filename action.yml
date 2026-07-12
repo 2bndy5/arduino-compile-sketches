@@ -40,10 +40,10 @@ runs:
         Set-ExecutionPolicy Unrestricted
         -Scope Process; iex
         (iwr "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.ps1").Content
-    - name: Install report-size-deltas binary
+    - name: Install arduino-compile-sketches binary
       shell: bash
       env:
-        STANDALONE_BIN_VER: '1.0.4'
+        STANDALONE_BIN_VER: '0.0.0'
         GITHUB_TOKEN: ${{ github.token }}
       run: >-
         cargo-binstall -y
@@ -52,6 +52,15 @@ runs:
         --locked
     - shell: bash
       env:
-        SKETCHES_REPORTS_SOURCE: ${{ inputs.sketches-reports-source }}
-        GITHUB_TOKEN: ${{ inputs.token }}
-      run: ${GITHUB_ACTION_PATH%/}/bin/report-size-deltas
+        INPUT_CLI-VERSION: ${{ inputs.cli-version }}
+        INPUT_FQBN: ${{ inputs.fqbn }}
+        INPUT_PLATFORMS: ${{ inputs.platforms }}
+        INPUT_LIBRARIES: ${{ inputs.libraries }}
+        INPUT_SKETCH-PATHS: ${{ inputs.sketch-paths }}
+        INPUT_CLI-COMPILE-FLAGS: ${{ inputs.cli-compile-flags }}
+        INPUT_VERBOSE: ${{ inputs.verbose }}
+        INPUT_FAIL-ON-COMPILE-ERROR: ${{ inputs.fail-on-compile-error }}
+        INPUT_ENABLE-DELTAS-REPORT: ${{ inputs.enable-deltas-report }}
+        INPUT_ENABLE-WARNINGS-REPORT: ${{ inputs.enable-warnings-report }}
+        INPUT_SKETCHES-REPORT-PATH: ${{ inputs.sketches-report-path }}
+      run: ${GITHUB_ACTION_PATH%/}/bin/arduino-compile-sketches

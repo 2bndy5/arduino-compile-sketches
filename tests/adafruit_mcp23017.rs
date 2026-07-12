@@ -62,7 +62,7 @@ fn run_git(current_dir: &Path, args: &[&str], task: &str) {
     );
 }
 
-fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
+fn ensure_head_cache(repo: &str, head_sha: &str) -> (PathBuf, File) {
     let cache_root = env::temp_dir().join("arduino-compile-sketches-tests");
     fs::create_dir_all(&cache_root).expect("create cache root");
 
@@ -107,12 +107,11 @@ fn ensure_head_cache(repo: &str, head_sha: &str) -> PathBuf {
             "checkout head commit in cached repo",
         );
     }
-    lock_file.unlock().expect("unlock cache lock file");
-    repo_dir
+    (repo_dir, lock_file)
 }
 
 fn clone_cached_head_workspace(repo: &str, head_sha: &str) -> TempDir {
-    let repo_dir = ensure_head_cache(repo, head_sha);
+    let (repo_dir, lock_file) = ensure_head_cache(repo, head_sha);
     let workspace = TempDir::new().expect("create temp dir for workspace clone");
 
     run_git(
@@ -125,6 +124,7 @@ fn clone_cached_head_workspace(repo: &str, head_sha: &str) -> TempDir {
         &["checkout", "-f", head_sha],
         "checkout workspace head commit",
     );
+    lock_file.unlock().expect("unlock cache lock file");
 
     workspace
 }
@@ -287,13 +287,7 @@ async fn run_compile_test(params: TestParams) {
     let workspace_dir: TempDir;
     let sketch_paths: Vec<PathBuf>;
 
-    if !(params.include_bad_sketch && params.fail_on_compile_error) {
-        workspace_dir = clone_cached_head_workspace(TEST_REPO, HEAD_SHA);
-        sketch_paths = vec![
-            workspace_dir.path().join(SKETCH_STABLE),
-            workspace_dir.path().join(SKETCH_MODIFIED),
-        ];
-    } else {
+    if params.include_bad_sketch || params.fail_on_compile_error {
         workspace_dir = TempDir::new().unwrap();
         let good_dir = workspace_dir.path().join("good_sketch");
         fs::create_dir_all(&good_dir).unwrap();
@@ -315,6 +309,12 @@ async fn run_compile_test(params: TestParams) {
             vec![good_dir]
         };
         run_git(workspace_dir.path(), &["init"], "init faulty workspace");
+    } else {
+        workspace_dir = clone_cached_head_workspace(TEST_REPO, HEAD_SHA);
+        sketch_paths = vec![
+            workspace_dir.path().join(SKETCH_STABLE),
+            workspace_dir.path().join(SKETCH_MODIFIED),
+        ];
     }
 
     let workspace_str = workspace_dir.path().to_string_lossy().to_string();

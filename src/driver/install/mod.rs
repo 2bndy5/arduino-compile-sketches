@@ -100,7 +100,7 @@ impl CompileSketches {
         let output = self.run_arduino_cli_command(&["version"])?;
         let version = &self.cli_version;
         let version_pattern =
-            regex::Regex::new(r"(?:i)[^vV]*Version\:[^0-9]*([0-9]+\.[0-9]+\.[0-9-rc.]+).*")?;
+            regex::Regex::new(r"(?i)[^vV]*Version\:[^0-9]*([0-9]+\.[0-9]+\.[0-9-rc.]+).*")?;
         if let Some(captures) = version_pattern.captures(&output)
             && let Some(ver) = captures.get(1).map(|v| v.as_str())
         {

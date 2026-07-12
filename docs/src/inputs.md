@@ -231,12 +231,6 @@ This report may be used with the
 
 **Default**: `false`
 
-{{#include ../../README.md:DELTA_CAVEATS}}
-
-<!-- markdownlint-disable MD053 -->
-[og-action]: https://github.com/arduino/compile-sketches
-<!-- markdownlint-enable MD053 -->
-
 ### How it works
 
 1. The sketch is first compiled with the current repository state/commit.
