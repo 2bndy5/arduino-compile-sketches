@@ -32,6 +32,8 @@ jobs:
     #   contents: write
     #   # for generating CHANGELOG entries using PR history
     #   pull-requests: read
+    environment:
+      name: bump-n-release
     steps:
       - uses: actions/checkout@v6
         with:
