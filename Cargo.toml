@@ -17,7 +17,7 @@ tar = "0.4"
 flate2 = "1.1"
 zip = { version = "8.6.0", features = ["deflate-flate2"] }
 tempfile = "3.27"
-serde-saphyr = "0.0.28"
+serde-saphyr = "0.0.29"
 arduino-report-size-deltas = "1.2.0"
 log = "0.4"
 url = "2.5.8"
