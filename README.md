@@ -68,7 +68,7 @@ See the [Inputs document][inputs-link] for details about supported inputs.
 ## Example
 
 ```yaml
-- uses: 2bndy5/arduino-compile-sketches@v0.0.0
+- uses: 2bndy5/arduino-compile-sketches@v0.1.0
   with:
     fqbn: "arduino:avr:uno"
     libraries: |
