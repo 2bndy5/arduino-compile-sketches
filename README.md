@@ -90,5 +90,5 @@ See the [Inputs document][inputs-link] for details about supported inputs.
 [docs.rs-link]: https://docs.rs/arduino-compile-sketches/
 
 <!-- ANCHOR_END: INTRO -->
-[inputs-link]: https://2bndy5.github.io/arduino-compile-sketches
+[inputs-link]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html
 [enable-warnings-report-link]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#enable-warnings-report
