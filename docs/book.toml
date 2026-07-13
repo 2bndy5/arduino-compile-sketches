@@ -15,9 +15,6 @@ git-repository-url = "https://github.com/2bndy5/arduino-compile-sketches"
 git-repository-icon = "fab-github"
 edit-url-template = "https://github.com/2bndy5/arduino-compile-sketches/edit/main/docs/{path}"
 
-[output.html.fold]
-level = 4
-
 [preprocessor.gen-inputs]
 command = "uv run gen_inputs.py"
 before = ["links"]

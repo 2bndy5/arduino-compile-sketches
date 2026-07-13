@@ -49,7 +49,7 @@ aside from occasionally merging dependabot updates.
 <!-- ANCHOR: CLI_CAVEATS -->
 
 > [!CAUTION]
-> When [`enable-warnings-report`][enable-deltas-report-link] is enabled,
+> When [`enable-warnings-report`][enable-warnings-report-link] is enabled,
 > the `--clean` flag is passed to `arduino-cli compile`.
 > This means warnings reports can only be generated from
 > a version of [arduino-cli] v0.14.0-rc.1 or later.
@@ -91,4 +91,4 @@ See the [Inputs document][inputs-link] for details about supported inputs.
 
 <!-- ANCHOR_END: INTRO -->
 [inputs-link]: https://2bndy5.github.io/arduino-compile-sketches
-[enable-deltas-report-link]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#enable-deltas-report
+[enable-warnings-report-link]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#enable-warnings-report

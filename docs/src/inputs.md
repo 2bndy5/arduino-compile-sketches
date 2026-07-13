@@ -9,4 +9,4 @@ and converted to markdown sections.
 
 To see the end result rendered, go to the [Inputs page][inputs-link].
 
-[inputs-link]: https://2bndy5.github.io/arduino-compile-sketches
+[inputs-link]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html

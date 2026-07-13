@@ -57,7 +57,7 @@ DOC_END = """
 [YAML]: https://learnxinyminutes.com/yaml/
 [og-action]: https://github.com/arduino/compile-sketches
 [arduino-cli]: https://github.com/arduino/arduino-cli
-[enable-deltas-report-link]: #enable-deltas-report
+[enable-warnings-report-link]: #enable-warnings-report
 """
 
 
