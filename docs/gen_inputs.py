@@ -57,7 +57,7 @@ DOC_END = """
 [YAML]: https://learnxinyminutes.com/yaml/
 [og-action]: https://github.com/arduino/compile-sketches
 [arduino-cli]: https://github.com/arduino/arduino-cli
-[enable-warnings-report-link]: #enable-warnings-report
+[enable-warnings-report-input]: #enable-warnings-report
 """
 
 

@@ -41,10 +41,11 @@ aside from occasionally merging dependabot updates.
 - Cache the installed [arduino-cli] for consecutive steps in the same job. This
   does not mean the cache is persisted between runs.
 - Check (and log) the version of the installed [arduino-cli].
-- Optionally prevent non-zero exit code when any sketch compilation fails.
+- Optionally prevent non-zero exit code when any sketch compilation fails; see
+  the new [`fail-on-compile-error`][fail-on-compile-error-input] input.
 - Generate JSON reports regardless of compilation success or failure.
-- Proper log level filtering (where [`verbose`][verbose-input] enables debugging level), and
-  optionally colored log level prefixes (respects
+- Proper log level filtering (where [`verbose`][verbose-input] enables debugging
+  level), and optionally colored log level prefixes (respects
   [conventional env variables][colored-env-vars]).
 - No Python runtime required. This action ships a compiled binary executable
   instead.
@@ -103,3 +104,4 @@ See the [Inputs document][inputs-link] for details about supported inputs.
 [platforms-input]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#platforms
 [cli-version-input]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#cli-version
 [verbose-input]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#verbose
+[fail-on-compile-error-input]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#fail-on-compile-error

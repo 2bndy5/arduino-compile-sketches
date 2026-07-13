@@ -9,3 +9,4 @@
 [platforms-input]: ./inputs.md#platforms
 [cli-version-input]: ./inputs.md#cli-version
 [verbose-input]: ./inputs.md#verbose
+[fail-on-compile-error-input]: ./inputs.md#fail-on-compile-error
