@@ -27,7 +27,7 @@
 #
 #    NOTE: In a CI run, the GITHUB_TOKEN env var to authenticate access.
 #    Locally, you can use `gh login` to interactively authenticate the user account.
-
+use ../common.nu run-cmd
 
 let IN_CI = $env | get --optional CI | default "false" | ($in == "true") or ($in == true)
 
@@ -51,18 +51,20 @@ def bump-version [
     )
     print $"bumped ($result | get old) to ($result | get new)"
     # update the version in various places
-    (
-        open action.yml --raw
-        | str replace $"STANDALONE_BIN_VER: '($result | get old)'" $"STANDALONE_BIN_VER: '($result | get new)'"
-        | save --force action.yml
-    )
+
+    let action_yml = open action.yml --raw
+    $action_yml
+    | str replace $"STANDALONE_BIN_VER: '($result | get old)'" $"STANDALONE_BIN_VER: '($result | get new)'"
+    | save --force action.yml
+
     print "Updated action.yml"
-    (
-        open README.md
-        | str replace $"arduino-compile-sketches@v($result | get old)" $"arduino-compile-sketches@v($result | get new)"
-        | save --force README.md
-    )
+
+    let readme = open README.md --raw
+    $readme
+    | str replace $"arduino-compile-sketches@v($result | get old)" $"arduino-compile-sketches@v($result | get new)"
+    | save --force README.md
     print "Updated README.md"
+
     $result | get new
 }
 
@@ -84,7 +86,7 @@ def gen-changes [
         $args = $args | append [--output, $out_path]
         {out_path: $out_path, log_prefix: "Updated"}
     }
-    ^git-cliff ...$args
+    run-cmd uvx --constraints .github/requirements.txt git-cliff ...$args
     print ($prompt | format pattern "{log_prefix} {out_path}")
 }
 
@@ -101,12 +103,12 @@ def mv-rolling-tags [
     for t in [$major_tag, $minor_tag] {
         if ($t in $tags) {
             # delete local tag
-            git tag -d $t
+            run-cmd git tag -d $t
             # delete remote tags
-            git push origin $":refs/tags/($t)"
+            run-cmd git push origin $":refs/tags/($t)"
         }
-        git tag $t
-        git push origin $t
+        run-cmd git tag $t
+        run-cmd git push origin $t
         print $"Adjusted tags ($t)"
     }
 }
@@ -122,13 +124,6 @@ def is-on-main [] {
         | str trim
     ) == "main"
     $branch
-}
-
-# Publish a GitHub Release for the given tag.
-#
-# This requires a token in $env.GITHUB_TOKEN for authentication.
-def gh-release [tag: string] {
-    ^gh release create $tag --notes-file ".config/ReleaseNotes.md"
 }
 
 # The main function of this script.
@@ -151,14 +146,14 @@ def main [component: string] {
         print $"(ansi yellow)Not checked out on default branch!(ansi reset)"
     }
     if $IN_CI and $is_main {
-        git config --global user.name $"($env.GITHUB_ACTOR)"
-        git config --global user.email $"($env.GITHUB_ACTOR_ID)+($env.GITHUB_ACTOR)@users.noreply.github.com"
-        git add --all
-        git commit -m $"build: bump version to ($tag)"
-        git push
+        run-cmd git config --global user.name $"($env.GITHUB_ACTOR)"
+        run-cmd git config --global user.email $"($env.GITHUB_ACTOR_ID)+($env.GITHUB_ACTOR)@users.noreply.github.com"
+        run-cmd git add --all
+        run-cmd git commit -m $"build: bump version to ($tag)"
+        run-cmd git push
         mv-rolling-tags $ver
         print $"Deploying ($tag)"
-        gh-release $tag
+        run-cmd gh release create $tag --notes-file ".config/ReleaseNotes.md"
     } else if $is_main {
         print $"(ansi yellow)Not deploying from local clone.(ansi reset)"
     }
