@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- markdownlint-disable MD024 -->
 
+## [0.1.1] - 2026-07-13
+
+### <!-- 4 --> 🛠️ Fixed
+
+- Parse third-party platforms given a index URL by @2bndy5 in [#11](https://github.com/2bndy5/arduino-compile-sketches/pull/11)
+
+### <!-- 8 --> 📝 Documentation
+
+- Update README by @2bndy5 in [#10](https://github.com/2bndy5/arduino-compile-sketches/pull/10)
+
+[0.1.1]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.0...v0.1.1
+
+Full commit diff: [`v0.1.0...v0.1.1`][0.1.1]
+
 ## [0.1.0] - 2026-07-13
 
 ### <!-- 1 --> 🚀 Added
@@ -18,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configure CI to deploy from environment by @2bndy5 in [#7](https://github.com/2bndy5/arduino-compile-sketches/pull/7)
 - Bump serde-saphyr from 0.0.28 to 0.0.29 in the cargo group by @dependabot[bot] in [#3](https://github.com/2bndy5/arduino-compile-sketches/pull/3)
 - Bump the actions group across 1 directory with 6 updates by @dependabot[bot] in [#4](https://github.com/2bndy5/arduino-compile-sketches/pull/4)
+- Bump version to v0.1.0 by @2bndy5 in [`98a9de6`](https://github.com/2bndy5/arduino-compile-sketches/commit/98a9de69e27638399ed4546e6c0047f4ae4b3177)
 
 ### <!-- 8 --> 📝 Documentation
 
@@ -34,7 +49,7 @@ Full commit diff: [`85bbcfc...v0.1.0`][0.1.0]
 
 ## New Contributors
 
-- @2bndy5 made their first contribution in [#9](https://github.com/2bndy5/arduino-compile-sketches/pull/9)
+- @2bndy5 made their first contribution
 - @dependabot[bot] made their first contribution in [#4](https://github.com/2bndy5/arduino-compile-sketches/pull/4)
 
 

@@ -394,7 +394,7 @@ runs:
     - name: Install arduino-compile-sketches binary
       shell: bash
       env:
-        STANDALONE_BIN_VER: '0.1.0'
+        STANDALONE_BIN_VER: '0.1.1'
         GITHUB_TOKEN: ${{ github.token }}
       run: >-
         cargo-binstall -y
