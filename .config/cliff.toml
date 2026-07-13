@@ -18,7 +18,7 @@ body = """
   https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}
 {%- endmacro -%}
 {%- set UNRELEASED = "Unreleased" -%}
-{%- set init_commit = "f8863cc36d66708bfa0fb2fb1a219c7b2f97f7d6" -%}
+{%- set init_commit = "85bbcfc3ae397398a0e91968a4b0fd50744102c4" -%}
 {%- set this_version = UNRELEASED -%}
 
 {% if version -%}
@@ -92,12 +92,6 @@ protect_breaking_commits = true
 commit_preprocessors = [
     # remove issue numbers from commits
     { pattern = '\((\w+\s)?#([0-9]+)\)', replace = "" },
-    # re-title vague version bump commits (for older bump commits)
-    { pattern = 'chore\(([a-z0-9-]+)\): bump version to ', replace = 'build: bump $1 to v' },
-    # reassign bump commits to deps category (for older bump commits)
-    { pattern = 'chore: bump rf24', replace = 'build: bump rf24' },
-    # wrap package names in backticks
-    { pattern = '(rf24[a-z]*\-[a-z]+)', replace = '`$1`' },
 ]
 # regex for parsing and grouping commits
 commit_parsers = [
@@ -130,4 +124,4 @@ tag_pattern = "v[0-9]+.[0-9]+.[0-9]+"
 
 [remote.github]
 owner = "2bndy5"
-repo = "arduino-report-size-deltas"
+repo = "arduino-compile-sketches"
