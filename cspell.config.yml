@@ -23,6 +23,7 @@ words:
   - pwsh
   - reqwest
   - rsplit
+  - rumdl
   - rustup
   - SAMD
   - saphyr
