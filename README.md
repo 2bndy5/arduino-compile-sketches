@@ -49,8 +49,9 @@ aside from occasionally merging dependabot updates.
 <!-- ANCHOR: CLI_CAVEATS -->
 
 > [!CAUTION]
-> When `enable-warnings-report` is enabled, the `--clean` flag is passed to
-> `arduino-cli compile`. This means warnings reports can only be generated from
+> When [`enable-warnings-report`][enable-deltas-report-link] is enabled,
+> the `--clean` flag is passed to `arduino-cli compile`.
+> This means warnings reports can only be generated from
 > a version of [arduino-cli] v0.14.0-rc.1 or later.
 >
 > The [original Github action][og-action] does not use the `--clean` flag.
@@ -90,3 +91,4 @@ See the [Inputs document][inputs-link] for details about supported inputs.
 
 <!-- ANCHOR_END: INTRO -->
 [inputs-link]: https://2bndy5.github.io/arduino-compile-sketches
+[enable-deltas-report-link]: https://2bndy5.github.io/arduino-compile-sketches/inputs.html#enable-deltas-report

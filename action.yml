@@ -8,7 +8,7 @@ branding:
 inputs:
   cli-version:
     description: |-
-      The version of [Arduino CLI](https://github.com/arduino/arduino-cli) to use.
+      The version of [Arduino CLI][arduino-cli] to use.
 
       {{#include ../../README.md:CLI_CAVEATS}}
     default: "latest"
@@ -31,12 +31,14 @@ inputs:
     required: true
   libraries:
     description: |-
-      [YAML]-format list of library dependencies
-      to install.
+      [YAML]-_formatted_ (see [YAML-formatted string](#yaml-formatted-string))
+      list of library dependencies to install. Each item in the list is a
+      [YAML] mapping of `key: value` pairs. The supported keys and values are
+      described below.
 
       By default, the repository in the working directory is installed as
       a library. If there are no library dependencies and you want to override the
-      default, set the `libraries` input to an empty list (`- libraries: '[]'`).
+      default, set the `libraries` input to an empty list (`libraries: '[]'`).
 
       Libraries are installed under the Arduino user folder at `~/Arduino/libraries`.
 
@@ -52,6 +54,14 @@ inputs:
         metadata file.
       - **`version`** - version of the library to install.
         - **Default**: the latest version.
+
+      ##### Example { #libraries-library-manager-example }
+
+      ```yaml
+      libraries: |-
+        - name: ArduinoJSON
+          version: 7.4.2 # optional, defaults to "latest"
+      ```
 
       **Notes**:
 
@@ -70,6 +80,14 @@ inputs:
         - **Default**: the folder will be named according to the source repository or
           subfolder name.
 
+      ##### Example { #libraries-path-example }
+
+      ```yaml
+      libraries: |-
+        - source-path: "."
+          destination-name: ArduinoJSON # optional, default to folder name
+      ```
+
       #### Repository
 
       Keys:
@@ -87,6 +105,15 @@ inputs:
       - **`destination-name`** - folder name to install the library to.
         - **Default**: named according to the source repository or subfolder name.
 
+      ##### Example { #libraries-repository-example }
+
+      ```yaml
+      libraries: |-
+        - source-url: "https://github.com/arduino-libraries/Servo"
+          version: "latest" # optional, defaults to HEAD of default branch
+          destination-name: "Servo"  # optional, defaults to repository name
+      ```
+
       #### Archive download
 
       Keys:
@@ -96,19 +123,33 @@ inputs:
       - **`source-path`** - path to install as a library. Paths are relative to the
         root folder of the archive, or the root of the archive if it has no root
         folder.
-        - **Default**: root folder of the archive.
+        - **Default**: root folder of the archive. If the archive root folder has
+          no files, then the first nested folder that contains a file is used.
       - **`destination-name`** - folder name to install the library to.
         - **Default**: named according to the source archive or subfolder name.
+
+      ##### Example { #libraries-archive-example }
+
+      ```yaml
+      libraries: |-
+        - source-url: "https://github.com/arduino-libraries/Servo/archive/master.zip"
+          source-path: "Servo-master" # optional, see "Default:" note above
+          destination-name: "Servo"  # optional, defaults to archive name
+      ```
     default: "- source-path: ./"
     required: true
   platforms:
     description: |-
-      [YAML]-format list of platform dependencies
-      to install.
+      [YAML]-_formatted_ (see [YAML-formatted string](#yaml-formatted-string))
+      list of platform dependencies to install. Each item in the list is a
+      [YAML] mapping of `key: value` pairs. The supported keys and values are
+      described below.
 
       By default, the board's dependency will be automatically determined from the
       `fqbn` input and the latest version of that platform will be installed via
       Boards Manager.
+
+      ### Order is precedence
 
       If a platform dependency from a non-Boards Manager source of the same name as
       another Boards Manager source platform dependency is defined, they will both be
@@ -118,12 +159,10 @@ inputs:
       dependencies. Example:
 
       ```yaml
-      platforms: |
-          # Install the latest release of Arduino SAMD Boards and its toolchain
-          # via Boards Manager
+      platforms: |-
+          # Install the via Boards Manager
           - name: "arduino:samd"
-          # Install the platform from the root of the repository, replacing the
-          # platform installed via Boards Manager
+          # Install via explicit path, replacing the platform installed via Boards Manager
           - source-path: "."
             name: "arduino:samd"
       ```
@@ -142,6 +181,16 @@ inputs:
         - **Default**: Arduino's package index, which allows installation of all
           official platforms.
 
+      ##### Example { #platforms-manager-example }
+
+      ```yaml
+      platforms: |-
+        - name: "adafruit:nrf52"
+          source-url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+        - name: "rp2040::rp2040" # core also supports rp2350 boards too
+          source-url: "https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json"
+      ```
+
       #### Local path
 
       Keys:
@@ -150,6 +199,14 @@ inputs:
         paths are assumed to be relative to the root of the repository.
       - **`name`** - (**required**) platform name in the form of `VENDOR:ARCHITECTURE`
         (e.g., `arduino:avr`).
+
+      ##### Example { #platforms-path-example }
+
+      ```yaml
+      platforms: |-
+        - source-path: "."
+          name: "adafruit:nrf52"
+      ```
 
       #### Repository
 
@@ -168,6 +225,14 @@ inputs:
         root of the repository.
         - **Default**: root of the repository.
 
+      ##### Example { #platforms-repository-example }
+
+      ```yaml
+      platforms: |-
+        - source-url: "https://github.com/adafruit/Adafruit_nRF52_Arduino.git"
+          name: "adafruit:nrf52"
+      ```
+
       #### Archive download
 
       Keys:
@@ -179,13 +244,32 @@ inputs:
       - **`source-path`** - path to install as a platform. Paths are relative to the
         root folder of the archive, or the root of the archive if it has no root
         folder.
-        - **Default**: root folder of the archive.
+        - **Default**: root folder of the archive. If the archive root has no files,
+          then the first nested folder containing at least 1 file is used.
+
+      ##### Example { #platforms-archive-example }
+
+      ```yaml
+      platforms: |-
+        - source-url: "https://github.com/arduino/ArduinoCore-avr/archive/master.zip"
+          name: "arduino:avr"
+          source-path: "ArduinoCore-avr-master" # optional, see "Default:" note above
+      ```
     default: ""
     required: true
   sketch-paths:
     description: |-
       [YAML]-format list of paths containing
       sketches to compile. These paths will be searched recursively.
+
+      ### Example { #sketch-paths-example }
+
+      ```yaml
+      # compile only certain sketches
+      sketch-paths: |-
+        - examples/GettingStarted
+        - examples/AdvancedUsage
+      ```
     default: "- examples"
     required: true
   cli-compile-flags:
@@ -193,6 +277,15 @@ inputs:
       [YAML]-format list of flags to add to the Arduino CLI command used to compile the
       sketches. For the available flags, see
       [the Arduino CLI command reference](https://arduino.github.io/arduino-cli/latest/commands/arduino-cli_compile/#options).
+
+      ### Example { #cli-compile-flags-example }
+
+      ```yaml
+      cli-compile-flags: |-
+        # assumes the targeted platform supports the `extra_flags` compiler property
+        - --build-property
+        - compiler.cpp.extra_flags=-std=gnu++17
+      ```
     default: ""
     required: false
   verbose:
