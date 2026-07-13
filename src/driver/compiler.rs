@@ -245,17 +245,16 @@ impl CompileSketches {
                     // task completed, so log it.
                     log::info!(
                         target: "CI_LOG_CMD",
-                        "::group::Compilation for {relative_sketch_path}{base_ref_str} with {invoked_cmd}",
+                        "::group::Compilation for {relative_sketch_path}{base_ref_str}",
                     );
+                    log::info!("Invoked command: {invoked_cmd}");
+                    log::info!("arduino-cli output:\n{output}");
                     if !success {
                         log::error!(
                             target: "CI_LOG_CMD",
                             "::error::Compilation failed for {relative_sketch_path}{base_ref_str}",
                         );
                         all_compilations_successful = false;
-                        log::error!(target: "CI_LOG_CMD", "{output}");
-                    } else if self.sketch_compiler.verbose {
-                        log::debug!(target: "CI_LOG_CMD", "{output}");
                     }
                     log::info!(target: "CI_LOG_CMD", "::endgroup::");
                     log::info!("Compilation time elapsed: {}", fmt_duration(&duration));
