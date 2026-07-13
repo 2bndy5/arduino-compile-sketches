@@ -1,4 +1,6 @@
 use serde::Deserialize;
+#[cfg(feature = "bin")]
+use url::Url;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PrEventInfo {
@@ -91,7 +93,7 @@ pub(crate) enum PlatformDependency {
 }
 
 #[cfg(feature = "bin")]
-use std::collections::HashMap;
+use std::{collections::HashMap, ffi::OsStr, path::Path};
 #[cfg(feature = "bin")]
 impl TryFrom<HashMap<String, String>> for PlatformDependency {
     type Error = crate::error::CompileSketchesError;
@@ -104,6 +106,25 @@ impl TryFrom<HashMap<String, String>> for PlatformDependency {
                     version: value.get("version").cloned(),
                     source_path: value.get("source-path").cloned(),
                     destination_name: value.get("destination-name").or(value.get("name")).cloned(),
+                }));
+            } else if let Ok(source_url) = Url::parse(url)
+                && let Some(file_name) = Path::new(source_url.path())
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                && file_name.ends_with("index.json")
+                && file_name.starts_with("package_")
+                && let Some(name) = value.get("name")
+                && let Some(pos) = name.find(':')
+                && pos > 0
+                && pos < name.len() - 1
+            {
+                // third-party platforms must be discoverable from a package_*index.json.
+                // In this case, a name is also required, and it should have a ":" in
+                // the middle of it (eg. `vendor:arch`).
+                return Ok(PlatformDependency::Manager(ManagerEntry {
+                    name: name.to_owned(),
+                    version: value.get("version").cloned(),
+                    source_url: Some(url.clone()),
                 }));
             } else {
                 return Ok(PlatformDependency::Download(DownloadEntry {
@@ -250,7 +271,9 @@ mod tests {
         use std::collections::HashMap;
 
         let yaml = r#"
-- name: arduino:avr:uno
+- name: arduino:avr
+- name: custom:platform
+  source-url: https://example.com/package_arch_index.json
 - source-path: ./local/platform
   name: Vendor:Arch:Board
 - source-url: https://example.com/another-platform.git
@@ -260,6 +283,7 @@ mod tests {
 "#;
         let map: Vec<HashMap<String, String>> = serde_saphyr::from_str(yaml).unwrap();
         let deps = Dependencies::from_input(map).unwrap();
+        eprintln!("{:#?}", deps);
         assert!(!deps.manager.is_empty());
         assert!(!deps.path.is_empty());
         assert!(!deps.repository.is_empty());
@@ -277,9 +301,12 @@ mod tests {
             assert_eq!(dep.destination_name.as_deref(), Some("vendor:arch:board"));
         }
         for dep in deps.manager {
-            assert_eq!(dep.name, "arduino:avr:uno");
+            assert!(["custom:platform", "arduino:avr"].contains(&dep.name.as_str()));
             assert!(dep.version.is_none());
-            assert!(dep.source_url.is_none());
+            assert!(
+                dep.source_url
+                    .is_none_or(|url| url.ends_with("package_arch_index.json"))
+            );
         }
     }
 
