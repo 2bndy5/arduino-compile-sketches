@@ -1,5 +1,5 @@
 name: arduino-compile-sketches
-description: >-
+description: |-
   Compile Arduino sketches and produce a consumable JSON report(s).
 author: 2bndy5
 branding:
@@ -7,65 +7,364 @@ branding:
   color: "blue"
 inputs:
   cli-version:
-    description: >-
-      Version of Arduino CLI to use when building
+    description: |-
+      The version of [Arduino CLI][arduino-cli] to use.
+
+      {{#include ../../README.md:CLI_CAVEATS}}
     default: "latest"
     required: true
   fqbn:
     # spell-checker: disable
-    description: >-
+    description: |-
       Full qualified board name (FQBN) to use when compiling sketches.
       This is often found in the Arduino core's board.txt file.
       Or you can use `arduino-cli board listall` in a terminal.
+
+      If the board is from one of the platforms provided by Arduino's
+      [default package index](https://downloads.arduino.cc/packages/package_index.json),
+      the board's platform dependency will be automatically detected and the latest
+      version installed. For boards of platforms not in the default package index,
+      previous versions, or other platform sources, the platform dependency must be
+      defined via the [`platforms` input](#platforms).
     # spell-checker: enable
     default: "arduino:avr:uno"
     required: true
   libraries:
-    description: >-
-      YAML-format list of library dependencies to install
+    description: |-
+      [YAML]-_formatted_ (see [YAML-formatted string](#yaml-formatted-string))
+      list of library dependencies to install. Each item in the list is a
+      [YAML] mapping of `key: value` pairs. The supported keys and values are
+      described below.
+
+      By default, the repository in the working directory is installed as
+      a library. If there are no library dependencies and you want to override the
+      default, set the `libraries` input to an empty list (`libraries: '[]'`).
+
+      Libraries are installed under the Arduino user folder at `~/Arduino/libraries`.
+
+      ### Supported library sources
+
+      #### Library Manager
+
+      Keys:
+
+      - **`name`** - (**required**) name of the library, as defined in the `name`
+        field of its
+        [library.properties](https://arduino.github.io/arduino-cli/latest/library-specification/#libraryproperties-file-format)
+        metadata file.
+      - **`version`** - version of the library to install.
+        - **Default**: the latest version.
+
+      ##### Example { #libraries-library-manager-example }
+
+      ```yaml
+      libraries: |-
+        - name: ArduinoJSON
+          version: 7.4.2 # optional, defaults to "latest"
+      ```
+
+      **Notes**:
+
+      - The library will be installed to a folder matching its name, but with any
+        spaces replaced by `_`.
+      - If the library's author defined dependencies, those libraries will be
+        installed automatically.
+
+      #### Local path
+
+      Keys:
+
+      - **`source-path`** - (**required**) path to install as a library. Relative
+        paths are assumed to be relative to the root of the repository.
+      - **`destination-name`** - folder name to install the library to.
+        - **Default**: the folder will be named according to the source repository or
+          subfolder name.
+
+      ##### Example { #libraries-path-example }
+
+      ```yaml
+      libraries: |-
+        - source-path: "."
+          destination-name: ArduinoJSON # optional, default to folder name
+      ```
+
+      #### Repository
+
+      Keys:
+
+      - **`source-url`** - (**required**) URL to clone the repository from. It must
+        start with `git://` or end with `.git`.
+      - **`version`** -
+        [Git ref](https://git-scm.com/book/en/v2/Git-Internals-Git-References) of the
+        repository to checkout. The special version name `latest` will cause the
+        latest tag to be used.
+        - **Default**: the tip of the default branch.
+      - **`source-path`** - path to install as a library. Paths are relative to the
+        root of the repository.
+        - **Default**: root of the repository.
+      - **`destination-name`** - folder name to install the library to.
+        - **Default**: named according to the source repository or subfolder name.
+
+      ##### Example { #libraries-repository-example }
+
+      ```yaml
+      libraries: |-
+        - source-url: "https://github.com/arduino-libraries/Servo"
+          version: "latest" # optional, defaults to HEAD of default branch
+          destination-name: "Servo"  # optional, defaults to repository name
+      ```
+
+      #### Archive download
+
+      Keys:
+
+      - **`source-url`** - (**required**) download URL for the archive (e.g.,
+        `https://github.com/arduino-libraries/Servo/archive/master.zip`).
+      - **`source-path`** - path to install as a library. Paths are relative to the
+        root folder of the archive, or the root of the archive if it has no root
+        folder.
+        - **Default**: root folder of the archive. If the archive root folder has
+          no files, then the first nested folder that contains a file is used.
+      - **`destination-name`** - folder name to install the library to.
+        - **Default**: named according to the source archive or subfolder name.
+
+      ##### Example { #libraries-archive-example }
+
+      ```yaml
+      libraries: |-
+        - source-url: "https://github.com/arduino-libraries/Servo/archive/master.zip"
+          source-path: "Servo-master" # optional, see "Default:" note above
+          destination-name: "Servo"  # optional, defaults to archive name
+      ```
     default: "- source-path: ./"
     required: true
   platforms:
-    description: >-
-      YAML-format list of platform dependencies to install
+    description: |-
+      [YAML]-_formatted_ (see [YAML-formatted string](#yaml-formatted-string))
+      list of platform dependencies to install. Each item in the list is a
+      [YAML] mapping of `key: value` pairs. The supported keys and values are
+      described below.
+
+      By default, the board's dependency will be automatically determined from the
+      `fqbn` input and the latest version of that platform will be installed via
+      Boards Manager.
+
+      ### Order is precedence
+
+      If a platform dependency from a non-Boards Manager source of the same name as
+      another Boards Manager source platform dependency is defined, they will both be
+      installed, with the non-Boards Manager dependency overwriting the Boards Manager
+      platform installation. This permits testing against a non-release version of a
+      platform while using Boards Manager to install the platform's tools
+      dependencies. Example:
+
+      ```yaml
+      platforms: |-
+          # Install the via Boards Manager
+          - name: "arduino:samd"
+          # Install via explicit path, replacing the platform installed via Boards Manager
+          - source-path: "."
+            name: "arduino:samd"
+      ```
+
+      ### Supported platform sources
+
+      #### Boards Manager
+
+      Keys:
+
+      - **`name`** - (**required**) platform name in the form of `VENDOR:ARCHITECTURE`
+        (e.g., `arduino:avr`).
+      - **`version`** - version of the platform to install.
+        - **Default**: the latest version.
+      - **`source-url`** - Boards Manager URL of the platform.
+        - **Default**: Arduino's package index, which allows installation of all
+          official platforms.
+
+      ##### Example { #platforms-manager-example }
+
+      ```yaml
+      platforms: |-
+        - name: "adafruit:nrf52"
+          source-url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+        - name: "rp2040::rp2040" # core also supports rp2350 boards too
+          source-url: "https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json"
+      ```
+
+      #### Local path
+
+      Keys:
+
+      - **`source-path`** - (**required**) path to install as a platform. Relative
+        paths are assumed to be relative to the root of the repository.
+      - **`name`** - (**required**) platform name in the form of `VENDOR:ARCHITECTURE`
+        (e.g., `arduino:avr`).
+
+      ##### Example { #platforms-path-example }
+
+      ```yaml
+      platforms: |-
+        - source-path: "."
+          name: "adafruit:nrf52"
+      ```
+
+      #### Repository
+
+      Keys:
+
+      - **`source-url`** - (**required**) URL to clone the repository from. It must
+        start with `git://` or end with `.git`.
+      - **`name`** - (**required**) platform name in the form of `VENDOR:ARCHITECTURE`
+        (e.g., `arduino:avr`).
+      - **`version`** -
+        [Git ref](https://git-scm.com/book/en/v2/Git-Internals-Git-References) of the
+        repository to checkout. The special version name `latest` will cause the
+        latest tag to be used.
+        - **Default**: the repository is checked out to the tip of the default branch.
+      - **`source-path`** - path to install as a platform. Paths are relative to the
+        root of the repository.
+        - **Default**: root of the repository.
+
+      ##### Example { #platforms-repository-example }
+
+      ```yaml
+      platforms: |-
+        - source-url: "https://github.com/adafruit/Adafruit_nRF52_Arduino.git"
+          name: "adafruit:nrf52"
+      ```
+
+      #### Archive download
+
+      Keys:
+
+      - **`source-url`** - (**required**) download URL for the archive (e.g.,
+        `https://github.com/arduino/ArduinoCore-avr/archive/master.zip`).
+      - **`name`** - (**required**) platform name in the form of `VENDOR:ARCHITECTURE`
+        (e.g., `arduino:avr`).
+      - **`source-path`** - path to install as a platform. Paths are relative to the
+        root folder of the archive, or the root of the archive if it has no root
+        folder.
+        - **Default**: root folder of the archive. If the archive root has no files,
+          then the first nested folder containing at least 1 file is used.
+
+      ##### Example { #platforms-archive-example }
+
+      ```yaml
+      platforms: |-
+        - source-url: "https://github.com/arduino/ArduinoCore-avr/archive/master.zip"
+          name: "arduino:avr"
+          source-path: "ArduinoCore-avr-master" # optional, see "Default:" note above
+      ```
     default: ""
     required: true
   sketch-paths:
-    description: >-
-      YAML-format list of paths containing sketches to compile.
+    description: |-
+      [YAML]-format list of paths containing
+      sketches to compile. These paths will be searched recursively.
+
+      ### Example { #sketch-paths-example }
+
+      ```yaml
+      # compile only certain sketches
+      sketch-paths: |-
+        - examples/GettingStarted
+        - examples/AdvancedUsage
+      ```
     default: "- examples"
     required: true
   cli-compile-flags:
-    description: >-
-      YAML-format list of flags to add to the Arduino CLI sketch compilation command.
+    description: |-
+      [YAML]-format list of flags to add to the Arduino CLI command used to compile the
+      sketches. For the available flags, see
+      [the Arduino CLI command reference](https://arduino.github.io/arduino-cli/latest/commands/arduino-cli_compile/#options).
+
+      ### Example { #cli-compile-flags-example }
+
+      ```yaml
+      cli-compile-flags: |-
+        # assumes the targeted platform supports the `extra_flags` compiler property
+        - --build-property
+        - compiler.cpp.extra_flags=-std=gnu++17
+      ```
     default: ""
     required: false
   verbose:
-    description: >-
-      Set to true to show verbose output in the log
+    description: |-
+      Set to true to show verbose output in the workflow run's logs.
+
+      - `true`: enables debug level (and higher) messages
+      - `false`: enables info level (and higher) messages
+
+      This also enables verbose output from arduino-cli.
     default: "false"
     required: true
   sketches-report-path:
-    description: >-
-      Path in which to save a JSON formatted file containing data from the sketch compilations
+    description: |-
+      Path in which to save a JSON formatted file containing data from the sketch
+      compilations. Should be used only to store reports. Relative paths are relative
+      to the working directory of the step.
+      The path will be created if it doesn't already exist.
+
+      This report is used by the
+      [`2bndy5/arduino-report-size-deltas`](https://github.com/2bndy5/arduino-report-size-deltas)
+      action.
     default: "sketches-reports"
     required: true
   enable-deltas-report:
-    description: >-
-      Set to true to determine the change in memory usage and compiler warnings of the compiled
-      sketches between the head and base refs of a PR.
-      This is force-disabled for events that are not triggered `on: pull_request`.
+    description: |-
+      Set to `true` to determine the change in memory usage and
+      compiler warnings of the compiled sketches.
+
+      If the workflow is triggered by a
+      [`pull_request` event](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#pull_request),
+      the comparison is between the pull request branch and the tip of the pull
+      request's base branch.
+
+      If the workflow is triggered by a
+      [`push` event](https://docs.github.com/en/actions/reference/events-that-trigger-workflows#push),
+      the comparison is between the pushed commit and its immediate parent.
+
+      The deltas will be displayed in the GitHub Actions build log.
+
+      This report may be used with the
+      [`arduino/report-size-deltas` action](https://github.com/arduino/report-size-deltas).
+
+      ### How it works
+
+      1. The sketch is first compiled with the current repository state/commit.
+        The resulting data is stored to the sketches report.
+      2. Next, the same repository is checked out to the branch's base commit.
+        Once compilation of the new [`git checkout`][git-checkout] is done,
+        the resulting data is also stored to the sketches report.
+      3. Now, the data from both compilations is processed for comparison.
+        The delta is the change in the data between the two compilations.
+        This delta data is also stored to the sketches report.
+
+      > [!CAUTION]
+      > Installing dependencies via explicit paths ([`libraries`](#libraries) or
+      > [`platforms`](#platforms) inputs) should be located according to the
+      > repository's contents. Meaning, a [`git checkout`][git-checkout] may not be
+      > possible if there are untracked files in the git repository.
+
+      Dependencies specified as explicit paths are installed via
+      [symlinks](https://en.wikipedia.org/wiki/Symbolic_link).
+      Meaning dependencies from local paths under the repository's root
+      (the working directory) are synchronized with the git checkouts.
+      Any dependencies installed via explicit paths outside the repository
+      directory remain unchanged despite any git checkout performed.
+
+      [git-checkout]: https://git-scm.com/docs/git-checkout
     default: "false"
     required: true
   enable-warnings-report:
-    description: >-
-      Set to true to record the compiler warning count for each sketch compilation in the sketches
-      report
+    description: |-
+      Set to `true` to record the compiler warning count for each
+      sketch compilation in the sketches report.
     default: "false"
     required: true
   fail-on-compile-error:
-    description: >-
-      Set to false to continue successfully after compilation errors. Reports are generated
+    description: |-
+      Set to false to exit successfully after compilation errors. JSON reports are generated
       regardless of this setting. This only applies to the HEAD ref compilation. Compilation
       failures for a base ref (when calculating size deltas) are always ignored but logged.
     default: "true"
