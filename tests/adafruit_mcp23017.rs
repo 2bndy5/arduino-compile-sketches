@@ -486,7 +486,7 @@ async fn run_compile_test(params: TestParams) {
     }
 
     // ── 7. Construct CompileSketches ──────────────────────────────────────────
-    // `new_from_env()` uses clap to process input args via env vars
+    // `from_cli()` uses clap to process input args via env vars
     let mut app = CompileSketches::from_cli(&[]).unwrap();
 
     // replace paths with test-specific paths
@@ -494,6 +494,9 @@ async fn run_compile_test(params: TestParams) {
     app.relocate_paths(new_default_paths);
 
     // ── 8. Run ────────────────────────────────────────────────────────────────
+    // The production code assumes the current working directory is the repo root, so set that here for the test.
+    // This is really only required for doing a `git checkout` of the base-ref commit when generating a delta report.
+    env::set_current_dir(workspace_dir.path()).unwrap();
     let result = app.compile_sketches().await;
 
     if params.fail_on_compile_error {
