@@ -6,11 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- markdownlint-disable MD024 -->
 
+## [0.1.2] - 2026-07-13
+
+### <!-- 4 --> 🛠️ Fixed
+
+- Show compilation stdout regardless by @2bndy5 in [#12](https://github.com/2bndy5/arduino-compile-sketches/pull/12)
+
+### <!-- 7 -->🚦 Tests
+
+- Set CWD when running integration test by @2bndy5 in [#13](https://github.com/2bndy5/arduino-compile-sketches/pull/13)
+
+[0.1.2]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.1...v0.1.2
+
+Full commit diff: [`v0.1.1...v0.1.2`][0.1.2]
+
 ## [0.1.1] - 2026-07-13
 
 ### <!-- 4 --> 🛠️ Fixed
 
 - Parse third-party platforms given a index URL by @2bndy5 in [#11](https://github.com/2bndy5/arduino-compile-sketches/pull/11)
+
+### <!-- 6 --> 📦 Dependency updates
+
+- Bump version to v0.1.1 by @2bndy5 in [`784024f`](https://github.com/2bndy5/arduino-compile-sketches/commit/784024f590ca8e61d28f9ffd58902514e9871b96)
 
 ### <!-- 8 --> 📝 Documentation
 
