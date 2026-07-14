@@ -3,7 +3,7 @@ use tokio::task::JoinSet;
 use crate::{
     CompileSketches,
     error::{CompileSketchesError, Result},
-    report::{get_sizes_from_output, get_warning_count_from_output},
+    report::{apply_base_report, get_sizes_from_output, get_warning_count_from_output},
     utils::fmt_duration,
 };
 use arduino_report_size_deltas::report_structs::{Sketch, SketchSize, SketchSizeKind};
@@ -73,6 +73,7 @@ pub(super) struct CompilationResult {
 ///
 /// Returns true if the checkout was successful, false otherwise.
 pub(super) fn checkout_base_ref(base_ref: &str) -> bool {
+    log::debug!("Attempting `git fetch` for base ref '{base_ref}'");
     if let Ok(fetch_status) = Command::new("git")
         .args(["fetch", "--depth=1", "origin", base_ref])
         .status()
@@ -90,6 +91,7 @@ pub(super) fn checkout_base_ref(base_ref: &str) -> bool {
     // let `git checkout` be our source of operational truth.
     // `git fetch` might fail for several reasons, but `git checkout` might still succeed if
     // the base_ref is already present in the previous checkout's history.
+    log::debug!("Performing `git checkout` for base ref '{base_ref}'");
     if let Ok(status) = Command::new("git")
         .args(["-c", "advice.detachedHead=false", "checkout", base_ref])
         .status()
@@ -212,16 +214,13 @@ impl SketchCompiler {
 impl CompileSketches {
     /// Join the given `compile_jobs` and extract data from stdout for each sketch.
     ///
-    /// Returns a tuple of:
-    /// - `Vec<Sketch>`: the compilation reports for the compiled sketches
-    /// - `bool`: summary success of head ref compilations
+    /// Returns a boolean summarizing the success of all compilations.
     pub(super) async fn join_tasks(
         &self,
         mut compile_jobs: JoinSet<CompilationTaskResult>,
         base_ref_checkout: Option<&str>,
-        sketch_count: usize,
-    ) -> Result<(Vec<Sketch>, bool)> {
-        let mut sketch_reports = Vec::with_capacity(sketch_count);
+        sketch_reports: &mut Vec<Sketch>,
+    ) -> Result<bool> {
         let mut all_compilations_successful = true;
         while let Some(task_result) = compile_jobs.join_next().await {
             let task_result = task_result?;
@@ -277,14 +276,17 @@ impl CompileSketches {
                     } else {
                         None
                     };
-
                     let sketch = Sketch {
                         name: relative_sketch_path,
                         compilation_success: success,
                         sizes,
                         warnings,
                     };
-                    sketch_reports.push(sketch);
+                    if base_ref_checkout.is_some() {
+                        apply_base_report(sketch_reports, &sketch);
+                    } else {
+                        sketch_reports.push(sketch);
+                    }
                 }
                 CompilationTaskResult::Err {
                     relative_sketch_path,
@@ -303,7 +305,7 @@ impl CompileSketches {
                 }
             }
         }
-        Ok((sketch_reports, all_compilations_successful))
+        Ok(all_compilations_successful)
     }
 }
 
@@ -348,7 +350,11 @@ mod tests {
             compile_sketch_task(compiler, sketch, sketch_path.to_string_lossy().to_string())
         });
 
-        let (sketches, success) = driver.join_tasks(compile_jobs, None, 1).await.unwrap();
+        let mut sketches = vec![];
+        let success = driver
+            .join_tasks(compile_jobs, None, &mut sketches)
+            .await
+            .unwrap();
         assert!(!success, "overall compilation reported as successful");
         assert!(sketches.is_empty(), "sketch reports should be empty");
     }

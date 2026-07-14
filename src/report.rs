@@ -14,6 +14,10 @@ pub(super) fn get_sizes_from_output(compilation_output: &str) -> Result<Vec<Sket
         r"Global variables use ([0-9]+) bytes .*of dynamic memory(?:.*\.? Maximum is ([0-9]+) bytes\.)?",
     )?;
 
+    // If any of the following:
+    // - recipe.size.regex is not defined in platform.txt
+    // - upload.maximum_size is not defined in boards.txt
+    // flash usage will not be reported in the Arduino CLI output
     let (flash_abs, flash_max) = flash_re
         .captures(compilation_output)
         .map(|c| {
@@ -23,6 +27,11 @@ pub(super) fn get_sizes_from_output(compilation_output: &str) -> Result<Vec<Sket
         })
         .unwrap_or((None, None));
 
+    // If any of the following:
+    // - recipe.size.regex.data is not defined in platform.txt (e.g., Arduino SAM Boards)
+    // - recipe.size.regex is not defined in platform.txt
+    // - upload.maximum_size is not defined in boards.txt
+    // RAM usage will not be reported in the Arduino CLI output
     let (ram_abs, ram_max) = ram_re
         .captures(compilation_output)
         .map(|c| {
@@ -52,15 +61,12 @@ fn mk_sketch_size_from_captures(
         (Some(max), Some(abs)) => Some(SizeValue::Known(abs as f32 / max as f32)),
         _ => None,
     };
+    let reason = "The board's platform may not have been configured to provide this information.";
     if max_value.is_none() {
-        log::warn!(
-            "Unable to determine the maximum {mem_kind} size. The board's platform may not have been configured to provide this information.",
-        );
+        log::warn!("Unable to determine the maximum {mem_kind} size. {reason}");
     }
     if abs_value.is_none() {
-        log::warn!(
-            "Unable to determine the absolute {mem_kind} size. The board's platform may not have been configured to provide this information.",
-        );
+        log::warn!("Unable to determine the absolute {mem_kind} size. {reason}");
     }
     SketchSize {
         maximum: max_value
@@ -89,9 +95,9 @@ pub(super) fn get_warning_count_from_output(compilation_output: &str) -> Result<
     })
 }
 
-pub(super) fn apply_base_report(sketch_reports: &mut [Sketch], base_sketches: &[Sketch]) {
+pub(super) fn apply_base_report(sketch_reports: &mut [Sketch], base_sketch: &Sketch) {
     for sketch in sketch_reports.iter_mut() {
-        let Some(base_sketch) = base_sketches.iter().find(|s| s.name == sketch.name) else {
+        if base_sketch.name != sketch.name {
             continue;
         };
 
@@ -126,6 +132,19 @@ pub(super) fn apply_base_report(sketch_reports: &mut [Sketch], base_sketches: &[
                 absolute: curr_warnings.current.absolute - base_warnings.current.absolute,
             };
         }
+        for size_kind in &sketch.sizes {
+            if let Some(delta) = &size_kind.get_size().delta
+                && let Some(SizeValue::Known(delta_rel)) = &delta.relative
+                && let SizeValue::Known(delta_abs) = &delta.absolute
+            {
+                let label = match size_kind {
+                    SketchSizeKind::Ram { .. } => "RAM for global variables",
+                    SketchSizeKind::Flash { .. } => "flash",
+                };
+                log::info!("Change in {label}: {delta_abs} ({delta_rel:.2}%)");
+            }
+        }
+        return;
     }
 }
 
@@ -140,7 +159,9 @@ fn calc_deltas(current_size: &mut SketchSize, base_size: &SketchSize) {
             (SizeValue::Known(curr), SizeValue::Known(prev)) => {
                 let delta = curr - prev;
                 let delta_rel = match current_size.maximum {
-                    Some(SizeValue::Known(v)) => Some(SizeValue::Known(delta as f32 / v as f32)),
+                    Some(SizeValue::Known(v)) => {
+                        Some(SizeValue::Known(delta as f32 / v as f32 * 100.0))
+                    }
                     _ => Some(SizeValue::NotApplicable),
                 };
                 (SizeValue::Known(delta), delta_rel)
@@ -436,7 +457,7 @@ mod tests {
             }),
         }];
 
-        let base_sketches = vec![Sketch {
+        let base_sketch = Sketch {
             name: "S1".into(),
             compilation_success: true,
             sizes: vec![],
@@ -445,9 +466,9 @@ mod tests {
                 previous: AbsCount::default(),
                 delta: AbsCount::default(),
             }),
-        }];
+        };
 
-        super::apply_base_report(&mut sketches, &base_sketches);
+        super::apply_base_report(&mut sketches, &base_sketch);
         let warnings = sketches[0].warnings.as_ref().unwrap();
         assert_eq!(warnings.previous.absolute, 2);
         assert_eq!(warnings.delta.absolute, 3);
