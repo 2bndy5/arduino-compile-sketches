@@ -365,7 +365,6 @@ impl CompileSketches {
             // now let the compilation tasks complete and merge the results with head ref data.
             self.join_tasks(compile_jobs, Some(base_ref.as_str()), &mut sketch_reports)
                 .await?;
-            // apply_base_report(&mut sketch_reports, &base_sketch_reports);
         }
 
         let board_sizes = {
