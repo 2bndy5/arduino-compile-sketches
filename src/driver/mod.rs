@@ -19,7 +19,7 @@ mod compiler;
 mod install;
 
 use self::compiler::{checkout_base_ref, compile_sketch_task};
-use crate::report::{apply_base_report, get_board_sizes_from_summary, get_sizes_summary_report};
+use crate::report::{get_board_sizes_from_summary, get_sizes_summary_report};
 pub use compiler::SketchCompiler;
 
 const USER_AGENT: &str = concat!("arduino-compile-sketches/", env!("CARGO_PKG_VERSION"));
@@ -292,7 +292,6 @@ impl CompileSketches {
     /// This also installs all dependencies and arduino-cli per fields in the [`CompileSketches`] struct.
     pub async fn compile_sketches(&mut self) -> Result<()> {
         let sketches = self.find_sketches()?;
-        let sketch_count = sketches.len();
         if sketches.is_empty() {
             log::warn!("No sketches found for paths: {:?}", self.sketch_paths);
             return Err(CompileSketchesError::NoSketchesFound);
@@ -319,9 +318,11 @@ impl CompileSketches {
             });
         }
 
+        let mut sketch_reports = vec![];
         // compile sketches for head ref
-        let (mut sketch_reports, all_compilations_successful) =
-            self.join_tasks(compile_jobs, None, sketch_count).await?;
+        let all_compilations_successful = self
+            .join_tasks(compile_jobs, None, &mut sketch_reports)
+            .await?;
 
         // get head ref now in case we need to use `git rev-parse`.
         // a checkout of the base ref will change the head ref.
@@ -335,8 +336,10 @@ impl CompileSketches {
             && let base_ref =
                 get_base_ref().ok_or_else(|| CompileSketchesError::UnknownGitRef("base"))?
         {
+            log::info!(
+                "Compiling previous version of sketches to determine change in memory usage"
+            );
             let mut compile_jobs = JoinSet::new();
-            let mut sketch_count = 0;
 
             // Checkout base ref in same path so compilations can use any libraries/platforms
             // installed via relative paths under the repository root.
@@ -349,7 +352,6 @@ impl CompileSketches {
                         compile_jobs.spawn_blocking(move || {
                             compile_sketch_task(compiler, sketch_abs_path, relative_sketch_path)
                         });
-                        sketch_count += 1;
                     } else {
                         log::info!(
                             "Sketch path {relative_sketch_path} does not exist in base ref {base_ref}; likely introduced on head ref. Skipping compilation for this sketch on base ref.",
@@ -361,10 +363,8 @@ impl CompileSketches {
             }
 
             // now let the compilation tasks complete and merge the results with head ref data.
-            let (base_sketch_reports, _) = self
-                .join_tasks(compile_jobs, Some(base_ref.as_str()), sketch_count)
+            self.join_tasks(compile_jobs, Some(base_ref.as_str()), &mut sketch_reports)
                 .await?;
-            apply_base_report(&mut sketch_reports, &base_sketch_reports);
         }
 
         let board_sizes = {
