@@ -6,11 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- markdownlint-disable MD024 -->
 
+## [0.1.3] - 2026-07-14
+
+### <!-- 4 --> 🛠️ Fixed
+
+- Treat relative delta size as a percentage by @2bndy5 in [#15](https://github.com/2bndy5/arduino-compile-sketches/pull/15)
+
+[0.1.3]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.2...v0.1.3
+
+Full commit diff: [`v0.1.2...v0.1.3`][0.1.3]
+
 ## [0.1.2] - 2026-07-13
 
 ### <!-- 4 --> 🛠️ Fixed
 
 - Show compilation stdout regardless by @2bndy5 in [#12](https://github.com/2bndy5/arduino-compile-sketches/pull/12)
+
+### <!-- 6 --> 📦 Dependency updates
+
+- Bump version to v0.1.2 by @2bndy5 in [`7054072`](https://github.com/2bndy5/arduino-compile-sketches/commit/7054072856c0b7a908e1df70581ed0421d4d5828)
 
 ### <!-- 7 -->🚦 Tests
 
