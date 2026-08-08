@@ -6,11 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- markdownlint-disable MD024 -->
 
+## [0.1.4] - 2026-08-08
+
+### <!-- 6 --> 📦 Dependency updates
+
+- Bump astral-sh/setup-uv from 8.3.0 to 8.3.2 in the actions group by @dependabot[bot] in [#17](https://github.com/2bndy5/arduino-compile-sketches/pull/17)
+- Bump regex from 1.12.4 to 1.13.0 in the cargo group by @dependabot[bot] in [#16](https://github.com/2bndy5/arduino-compile-sketches/pull/16)
+- Bump the cargo group with 4 updates by @dependabot[bot] in [#18](https://github.com/2bndy5/arduino-compile-sketches/pull/18)
+- Bump the actions group with 3 updates by @dependabot[bot] in [#19](https://github.com/2bndy5/arduino-compile-sketches/pull/19)
+- Bump the actions group with 3 updates by @dependabot[bot] in [#21](https://github.com/2bndy5/arduino-compile-sketches/pull/21)
+- Bump the cargo group with 5 updates by @dependabot[bot] in [#20](https://github.com/2bndy5/arduino-compile-sketches/pull/20)
+- Bump the cargo group with 2 updates by @dependabot[bot] in [#22](https://github.com/2bndy5/arduino-compile-sketches/pull/22)
+
+[0.1.4]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.3...v0.1.4
+
+Full commit diff: [`v0.1.3...v0.1.4`][0.1.4]
+
 ## [0.1.3] - 2026-07-14
 
 ### <!-- 4 --> 🛠️ Fixed
 
 - Treat relative delta size as a percentage by @2bndy5 in [#15](https://github.com/2bndy5/arduino-compile-sketches/pull/15)
+
+### <!-- 6 --> 📦 Dependency updates
+
+- Bump version to v0.1.3 by @2bndy5 in [`558c3a5`](https://github.com/2bndy5/arduino-compile-sketches/commit/558c3a56bc28ceee3efb0ed83b187f08f4a5d29e)
 
 [0.1.3]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.2...v0.1.3
 
