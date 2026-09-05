@@ -15,4 +15,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Compile sketches
-        uses: ./
+        uses: $/
