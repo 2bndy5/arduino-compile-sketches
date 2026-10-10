@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- markdownlint-disable MD024 -->
 
+## [0.1.5] - 2026-10-10
+
+### <!-- 6 --> 📦 Dependency updates
+
+- Bump the cargo group with 2 updates by @dependabot[bot] in [#23](https://github.com/2bndy5/arduino-compile-sketches/pull/23)
+- Bump thiserror from 2.0.19 to 2.0.20 in the cargo group by @dependabot[bot] in [#24](https://github.com/2bndy5/arduino-compile-sketches/pull/24)
+- Bump astral-sh/setup-uv from 9.0.0 to 10.0.1 in the actions group by @dependabot[bot] in [#25](https://github.com/2bndy5/arduino-compile-sketches/pull/25)
+- Bump cargo-binstall to 1.22.0 by @dependabot[bot] in [#27](https://github.com/2bndy5/arduino-compile-sketches/pull/27)
+- Bump serde-saphyr from 1.0.1 to 1.1.0 in the cargo group by @dependabot[bot] in [#26](https://github.com/2bndy5/arduino-compile-sketches/pull/26)
+- Bump the cargo group with 2 updates by @dependabot[bot] in [#28](https://github.com/2bndy5/arduino-compile-sketches/pull/28)
+- Bump cargo-bins/cargo-binstall from 1.22.0 to 1.23.0 in the actions group by @dependabot[bot] in [#30](https://github.com/2bndy5/arduino-compile-sketches/pull/30)
+- Bump serde-saphyr from 1.1.0 to 1.2.0 in the cargo group by @dependabot[bot] in [#29](https://github.com/2bndy5/arduino-compile-sketches/pull/29)
+- Bump reqwest from 0.13.4 to 0.13.5 in the cargo group by @dependabot[bot] in [#31](https://github.com/2bndy5/arduino-compile-sketches/pull/31)
+- Bump the cargo group across 1 directory with 3 updates by @dependabot[bot] in [#36](https://github.com/2bndy5/arduino-compile-sketches/pull/36)
+- Bump the actions group across 1 directory with 3 updates by @dependabot[bot] in [#37](https://github.com/2bndy5/arduino-compile-sketches/pull/37)
+- Bump arduino-report-size-deltas by @2bndy5 in [#38](https://github.com/2bndy5/arduino-compile-sketches/pull/38)
+
+[0.1.5]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.4...v0.1.5
+
+Full commit diff: [`v0.1.4...v0.1.5`][0.1.5]
+
 ## [0.1.4] - 2026-08-08
 
 ### <!-- 6 --> 📦 Dependency updates
@@ -17,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump the actions group with 3 updates by @dependabot[bot] in [#21](https://github.com/2bndy5/arduino-compile-sketches/pull/21)
 - Bump the cargo group with 5 updates by @dependabot[bot] in [#20](https://github.com/2bndy5/arduino-compile-sketches/pull/20)
 - Bump the cargo group with 2 updates by @dependabot[bot] in [#22](https://github.com/2bndy5/arduino-compile-sketches/pull/22)
+- Bump version to v0.1.4 by @2bndy5 in [`c736d03`](https://github.com/2bndy5/arduino-compile-sketches/commit/c736d032823636176afd54572296cf50a2427f81)
 
 [0.1.4]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.3...v0.1.4
 
