@@ -473,4 +473,74 @@ mod tests {
         assert_eq!(warnings.previous.absolute, 2);
         assert_eq!(warnings.delta.absolute, 3);
     }
+
+    fn size(abs: SizeValue<i64>, max: Option<SizeValue<u64>>) -> SketchSize {
+        SketchSize {
+            maximum: max,
+            current: SketchDeltaSize {
+                absolute: abs,
+                relative: None,
+            },
+            previous: None,
+            delta: None,
+        }
+    }
+
+    #[test]
+    fn apply_base_report_sets_size_deltas() {
+        let mk = |ram: SketchSize, flash: SketchSize| Sketch {
+            name: "S1".into(),
+            compilation_success: true,
+            sizes: vec![
+                SketchSizeKind::Ram { size: ram },
+                SketchSizeKind::Flash { size: flash },
+            ],
+            warnings: None,
+        };
+        let mut sketches = vec![mk(
+            size(SizeValue::Known(150), Some(SizeValue::Known(1000))),
+            size(SizeValue::Known(300), None),
+        )];
+        let base = mk(
+            size(SizeValue::Known(100), Some(SizeValue::Known(1000))),
+            size(SizeValue::NotApplicable, None),
+        );
+
+        super::apply_base_report(&mut sketches, &base);
+
+        let SketchSizeKind::Ram { size: ram } = &sketches[0].sizes[0] else {
+            panic!("expected ram");
+        };
+        let delta = ram.delta.as_ref().unwrap();
+        assert!(matches!(delta.absolute, SizeValue::Known(50)));
+        assert!(matches!(delta.relative, Some(SizeValue::Known(r)) if (r - 5.0).abs() < 0.01));
+
+        let SketchSizeKind::Flash { size: flash } = &sketches[0].sizes[1] else {
+            panic!("expected flash");
+        };
+        let delta = flash.delta.as_ref().unwrap();
+        assert!(matches!(delta.absolute, SizeValue::NotApplicable));
+        assert!(matches!(delta.relative, Some(SizeValue::NotApplicable)));
+    }
+
+    #[test]
+    fn apply_base_report_size_delta_no_max() {
+        let mk = |abs| Sketch {
+            name: "S1".into(),
+            compilation_success: true,
+            sizes: vec![SketchSizeKind::Flash {
+                size: size(SizeValue::Known(abs), None),
+            }],
+            warnings: None,
+        };
+        let mut sketches = vec![mk(30)];
+        super::apply_base_report(&mut sketches, &mk(10));
+
+        let SketchSizeKind::Flash { size } = &sketches[0].sizes[0] else {
+            panic!("expected flash");
+        };
+        let delta = size.delta.as_ref().unwrap();
+        assert!(matches!(delta.absolute, SizeValue::Known(20)));
+        assert!(matches!(delta.relative, Some(SizeValue::NotApplicable)));
+    }
 }
