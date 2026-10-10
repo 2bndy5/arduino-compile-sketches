@@ -61,7 +61,7 @@ jobs:
           persist-credentials: false
       - run: rustup update --no-self-update
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # v1.23.0
+        uses: cargo-bins/cargo-binstall@7bebc2e59eb8820162b7ac8f62a92bfdb2732447 # v1.25.1
       - name: Install committed
         env:
           GITHUB_TOKEN: ${{ github.token }}
