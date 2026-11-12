@@ -305,11 +305,15 @@ impl CompileSketches {
         let repo = env::var("GITHUB_REPOSITORY")
             .map_err(|e| CompileSketchesError::EnvVar("GITHUB_REPOSITORY", e))?;
 
+        let sketches = sketches
+            .into_iter()
+            .map(|sketch| Ok((path_relative_to_workspace(&sketch)?, sketch)))
+            .collect::<Result<Vec<_>>>()?;
         let mut compile_jobs = JoinSet::new();
 
-        for sketch in &sketches {
+        for (relative_sketch_path, sketch) in &sketches {
             let compiler = self.sketch_compiler.clone();
-            let relative_sketch_path = path_relative_to_workspace(sketch)?;
+            let relative_sketch_path = relative_sketch_path.clone();
 
             // Head ref task.
             let sketch_for_head = sketch.clone();
@@ -344,11 +348,11 @@ impl CompileSketches {
             // Checkout base ref in same path so compilations can use any libraries/platforms
             // installed via relative paths under the repository root.
             if checkout_base_ref(&base_ref) {
-                for sketch in &sketches {
-                    let relative_sketch_path = path_relative_to_workspace(sketch)?;
+                for (relative_sketch_path, sketch) in &sketches {
                     let sketch_abs_path = sketch.clone();
                     let compiler = self.sketch_compiler.clone();
                     if sketch.exists() {
+                        let relative_sketch_path = relative_sketch_path.clone();
                         compile_jobs.spawn_blocking(move || {
                             compile_sketch_task(compiler, sketch_abs_path, relative_sketch_path)
                         });
@@ -500,6 +504,116 @@ mod tests {
         let result = driver.find_sketches().unwrap();
         assert!(!result.is_empty() && result.len() == 1);
         assert_eq!(result[0], fake_sketch_file.path());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn delta_report_skips_sketches_missing_from_base() {
+        use std::{os::unix::fs::PermissionsExt, process::Command};
+
+        #[cfg(feature = "bin")]
+        crate::logger::init();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        fs::create_dir(&workspace).unwrap();
+        let git = |args: &[&str]| {
+            assert!(
+                Command::new("git")
+                    .args(args)
+                    .current_dir(&workspace)
+                    .env("GIT_AUTHOR_NAME", "Test")
+                    .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
+                    .env("GIT_COMMITTER_NAME", "Test")
+                    .env("GIT_COMMITTER_EMAIL", "test@example.invalid")
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        };
+        git(&["init"]);
+        for name in ["stable", "old"] {
+            fs::create_dir(workspace.join(name)).unwrap();
+            fs::write(workspace.join(name).join(format!("{name}.ino")), "").unwrap();
+        }
+        git(&["add", "."]);
+        git(&["commit", "-m", "base"]);
+        let base = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&workspace)
+            .output()
+            .unwrap();
+        let base = String::from_utf8(base.stdout).unwrap().trim().to_string();
+
+        fs::rename(workspace.join("old"), workspace.join("renamed")).unwrap();
+        fs::rename(
+            workspace.join("renamed/old.ino"),
+            workspace.join("renamed/renamed.ino"),
+        )
+        .unwrap();
+        fs::create_dir(workspace.join("new")).unwrap();
+        fs::write(workspace.join("new/new.ino"), "").unwrap();
+        fs::write(workspace.join("new_file.ino"), "").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-m", "head"]);
+
+        let cli = tmp.path().join("arduino-cli");
+        fs::write(
+            &cli,
+            r#"#!/bin/sh
+if [ "$1" = core ]; then
+    echo '{"platforms":[{"id":"arduino:avr","installed_version":"1.0"}]}'
+else
+    test -e "$4" || exit 1
+    echo 'Sketch uses 100 bytes (10%) of program storage space. Maximum is 1000 bytes.'
+    echo 'Global variables use 50 bytes (10%) of dynamic memory. Maximum is 500 bytes.'
+fi
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o755)).unwrap();
+        let event = tmp.path().join("event.json");
+        fs::write(
+            &event,
+            serde_json::json!({"pull_request":{"base":{"sha":base},"head":{"sha":"head"}}})
+                .to_string(),
+        )
+        .unwrap();
+        unsafe {
+            env::set_var("GITHUB_REPOSITORY", "test/repo");
+            env::set_var("GITHUB_EVENT_NAME", "pull_request");
+            env::set_var("GITHUB_EVENT_PATH", event);
+        }
+        let original_dir = env::current_dir().unwrap();
+        env::set_current_dir(&workspace).unwrap();
+
+        let mut driver = CompileSketches::default();
+        driver.sketch_compiler.arduino_cli_path = Some(cli);
+        driver.sketch_paths = ["stable", "renamed", "new", "new_file.ino"]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect();
+        driver.sketches_report_path = tmp.path().join("reports");
+        driver.enable_deltas_report = true;
+        driver.compile_sketches().await.unwrap();
+
+        let report: Report = serde_json::from_slice(
+            &fs::read(driver.sketches_report_path.join("arduino-avr-uno.json")).unwrap(),
+        )
+        .unwrap();
+        let sketches = &report.boards[0].sketches;
+        assert_eq!(sketches.len(), 4);
+        for name in ["stable", "renamed", "new", "new_file.ino"] {
+            assert!(sketches.iter().any(|sketch| sketch.name == name));
+        }
+        for sketch in sketches {
+            assert!(sketch.compilation_success);
+            for size in &sketch.sizes {
+                assert_eq!(size.get_size().previous.is_some(), sketch.name == "stable");
+                assert_eq!(size.get_size().delta.is_some(), sketch.name == "stable");
+            }
+        }
+        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
