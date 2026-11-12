@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- markdownlint-disable MD024 -->
 
+## [0.1.7] - 2026-11-12
+
+### <!-- 4 --> 🛠️ Fixed
+
+- Allow incomplete compilation reports by @Copilot in [#50](https://github.com/2bndy5/arduino-compile-sketches/pull/50)
+
+[0.1.7]: https://github.com/2bndy5/arduino-compile-sketches/compare/v0.1.6...v0.1.7
+
+Full commit diff: [`v0.1.6...v0.1.7`][0.1.7]
+
 ## [0.1.6] - 2026-11-12
 
 ### <!-- 4 --> 🛠️ Fixed
@@ -22,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump the actions group across 1 directory with 4 updates by @dependabot[bot] in [#44](https://github.com/2bndy5/arduino-compile-sketches/pull/44)
 - Bump the cargo group with 3 updates by @dependabot[bot] in [#46](https://github.com/2bndy5/arduino-compile-sketches/pull/46)
 - Bump the actions group with 2 updates by @dependabot[bot] in [#47](https://github.com/2bndy5/arduino-compile-sketches/pull/47)
+- Bump version to v0.1.6 by @2bndy5 in [`2c58c76`](https://github.com/2bndy5/arduino-compile-sketches/commit/2c58c7608900c8153d7674379e527bf44448a9d5)
 
 ### <!-- 9 --> 🗨️ Changed
 
