@@ -392,7 +392,8 @@ impl CompileSketches {
 
         // Serialize and write the canonical `Report`.
         if !report.is_valid() {
-            return Err(CompileSketchesError::IncompleteReport(report));
+            log::warn!("The generated report is incomplete; it may not provide usable feedback");
+            log::debug!("Incomplete report: {report:#?}");
         }
         let json = serde_json::to_string(&report)?;
         fs::write(out_path, json)?;
@@ -504,6 +505,71 @@ mod tests {
         let result = driver.find_sketches().unwrap();
         assert!(!result.is_empty() && result.len() == 1);
         assert_eq!(result[0], fake_sketch_file.path());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn incomplete_reports_are_written() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let sketch = tmp.path().join("sketch.ino");
+        fs::write(&sketch, "").unwrap();
+        let cli = tmp.path().join("arduino-cli");
+        fs::write(
+            &cli,
+            r#"#!/bin/sh
+if [ "$1" = core ]; then
+    echo '{"platforms":[{"id":"arduino:avr","installed_version":"1.0"}]}'
+elif [ "$5" = fail ]; then
+    exit 1
+elif [ "$5" = complete ]; then
+    echo 'Sketch uses 100 bytes (10%) of program storage space. Maximum is 1000 bytes.'
+    echo 'Global variables use 50 bytes (10%) of dynamic memory. Maximum is 500 bytes.'
+fi
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o755)).unwrap();
+        unsafe {
+            env::set_var("GITHUB_REPOSITORY", "test/repo");
+            env::set_var("GITHUB_EVENT_NAME", "push");
+            env::set_var("GITHUB_SHA", "head");
+        }
+
+        for (mode, fail_on_compile_error) in [
+            ("missing", true),
+            ("fail", false),
+            ("fail", true),
+            ("complete", true),
+        ] {
+            let mut driver = CompileSketches::default();
+            driver.sketch_compiler.arduino_cli_path = Some(cli.clone());
+            driver.sketch_compiler.cli_compile_flags = vec![mode.to_string()];
+            driver.sketch_paths = vec![sketch.clone()];
+            driver.sketches_report_path = tmp.path().join("reports");
+            driver.fail_on_compile_error = fail_on_compile_error;
+
+            let result = driver.compile_sketches().await;
+            if mode == "fail" && fail_on_compile_error {
+                assert!(matches!(
+                    result,
+                    Err(CompileSketchesError::CompilationFailed)
+                ));
+            } else {
+                result.unwrap();
+            }
+
+            let report_path = driver.sketches_report_path.join("arduino-avr-uno.json");
+            let report: Report = serde_json::from_slice(&fs::read(&report_path).unwrap()).unwrap();
+            assert_eq!(report.is_valid(), mode == "complete");
+            assert_eq!(report.boards[0].sketches.len(), 1);
+            assert_eq!(
+                report.boards[0].sketches[0].compilation_success,
+                mode != "fail"
+            );
+            fs::remove_file(report_path).unwrap();
+        }
     }
 
     #[cfg(unix)]
