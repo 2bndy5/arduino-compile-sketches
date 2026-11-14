@@ -312,6 +312,12 @@ mod tests {
 
     #[test]
     fn deserialize_platform_list() {
+        // enable log output so the log macros' arguments get evaluated
+        #[cfg(feature = "bin")]
+        {
+            crate::logger::init();
+            log::set_max_level(log::LevelFilter::Info);
+        }
         let json = PathBuf::from("tests/installed_platforms/core-list.json");
         let json_str = std::fs::read_to_string(json).unwrap();
         let platforms: InstalledPlatforms = serde_json::from_str(&json_str).unwrap();

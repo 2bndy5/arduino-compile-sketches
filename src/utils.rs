@@ -420,4 +420,14 @@ mod tests {
         assert!(found.is_empty());
         drop(tmp);
     }
+
+    #[test]
+    fn unresolvable_workspace_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let missing = tmp.path().join("does-not-exist");
+        assert!(matches!(
+            path_relative_to_workspace(&missing),
+            Err(CompileSketchesError::ResolvePath { .. })
+        ));
+    }
 }
