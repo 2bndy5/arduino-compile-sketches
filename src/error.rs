@@ -228,5 +228,45 @@ pub enum CompileSketchesError {
     IncompleteReport(Report),
 }
 
+impl CompileSketchesError {
+    /// Builds a mapper for I/O errors from running a git command.
+    pub(crate) fn git_io(task: &'static str) -> impl FnOnce(std::io::Error) -> Self {
+        move |source| Self::GitCommandIo { task, source }
+    }
+
+    /// Builds a mapper for I/O errors from temporary file/folder operations.
+    pub(crate) fn temp_io(task: &'static str) -> impl FnOnce(std::io::Error) -> Self {
+        move |source| Self::TempPathIo { task, source }
+    }
+
+    /// Builds a mapper for I/O errors from archive operations.
+    pub(crate) fn archive_io(task: &'static str) -> impl FnOnce(std::io::Error) -> Self {
+        move |source| Self::ArchiveExtractionIo { task, source }
+    }
+}
+
 /// A convenient alias for `Result<T, CompileSketchesError>`.
 pub type Result<T> = std::result::Result<T, CompileSketchesError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    #[test]
+    fn io_error_mappers() {
+        let e = || io::Error::other("oops");
+        assert!(matches!(
+            CompileSketchesError::git_io("t")(e()),
+            CompileSketchesError::GitCommandIo { task: "t", .. }
+        ));
+        assert!(matches!(
+            CompileSketchesError::temp_io("t")(e()),
+            CompileSketchesError::TempPathIo { task: "t", .. }
+        ));
+        assert!(matches!(
+            CompileSketchesError::archive_io("t")(e()),
+            CompileSketchesError::ArchiveExtractionIo { task: "t", .. }
+        ));
+    }
+}

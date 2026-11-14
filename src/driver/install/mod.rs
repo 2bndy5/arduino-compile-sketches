@@ -224,10 +224,9 @@ impl CompileSketches {
         force: bool,
     ) -> Result<()> {
         let clone_path = tempfile::TempDir::with_prefix("install_from_repository-")
-            .map_err(|source| CompileSketchesError::TempPathIo {
-                task: "create temp directory for repository clone",
-                source,
-            })?
+            .map_err(CompileSketchesError::temp_io(
+                "create temp directory for repository clone",
+            ))?
             // Don't let the tempdir be automatically deleted on drop.
             // We'll clean it up when exiting normally
             .keep();
@@ -240,10 +239,7 @@ impl CompileSketches {
                 clone_path.to_string_lossy().to_string().as_str(),
             ])
             .status()
-            .map_err(|source| CompileSketchesError::GitCommandIo {
-                task: "clone repository",
-                source,
-            })?;
+            .map_err(CompileSketchesError::git_io("clone repository"))?;
         if !clone_out.success() {
             return Err(CompileSketchesError::GitCommandFailed {
                 task: "clone repository",
@@ -257,10 +253,9 @@ impl CompileSketches {
                     // spell-checker: disable-next-line
                     .args(["fetch", "--unshallow", "--tags"])
                     .status()
-                    .map_err(|source| CompileSketchesError::GitCommandIo {
-                        task: "fetch history and tags for repository to resolve `latest`",
-                        source,
-                    })?;
+                    .map_err(CompileSketchesError::git_io(
+                        "fetch history and tags for repository to resolve `latest`",
+                    ))?;
                 if !fetch_status.success() {
                     return Err(CompileSketchesError::GitCommandFailed {
                         task: "fetch history and tags for repository to resolve `latest`",
@@ -272,10 +267,9 @@ impl CompileSketches {
                     .current_dir(&clone_path)
                     .args(["rev-parse", gr])
                     .output()
-                    .map_err(|source| CompileSketchesError::GitCommandIo {
-                        task: "resolve `latest` with `git rev-parse`",
-                        source,
-                    })?;
+                    .map_err(CompileSketchesError::git_io(
+                        "resolve `latest` with `git rev-parse`",
+                    ))?;
                 if rev_parsed.status.success() {
                     String::from_utf8_lossy(&rev_parsed.stdout)
                         .trim()
@@ -290,10 +284,9 @@ impl CompileSketches {
                             "--sort=-creatordate",
                         ])
                         .output()
-                        .map_err(|source| CompileSketchesError::GitCommandIo {
-                            task: "list tags for resolving `latest`",
-                            source,
-                        })?;
+                        .map_err(CompileSketchesError::git_io(
+                            "list tags for resolving `latest`",
+                        ))?;
                     if !tag_list.status.success() {
                         return Err(CompileSketchesError::GitCommandFailedContext {
                             task: "list tags for resolving `latest`",
@@ -319,10 +312,7 @@ impl CompileSketches {
                 .current_dir(&clone_path)
                 .args(["checkout", &git_ref])
                 .status()
-                .map_err(|source| CompileSketchesError::GitCommandIo {
-                    task: "checkout requested git ref",
-                    source,
-                })?;
+                .map_err(CompileSketchesError::git_io("checkout requested git ref"))?;
             if !checkout_status.success() {
                 return Err(CompileSketchesError::GitCommandFailed {
                     task: "checkout requested git ref",
@@ -342,10 +332,7 @@ impl CompileSketches {
                 "1",
             ])
             .status()
-            .map_err(|source| CompileSketchesError::GitCommandIo {
-                task: "initialize git submodules",
-                source,
-            })?;
+            .map_err(CompileSketchesError::git_io("initialize git submodules"))?;
         if !submodule_status.success() {
             return Err(CompileSketchesError::GitCommandFailed {
                 task: "initialize git submodules",
@@ -370,11 +357,9 @@ impl CompileSketches {
         destination_name: Option<&str>,
         force: bool,
     ) -> Result<()> {
-        let mut archive_path =
-            tempfile::tempfile().map_err(|source| CompileSketchesError::TempPathIo {
-                task: "create temp file for archive download",
-                source,
-            })?;
+        let mut archive_path = tempfile::tempfile().map_err(CompileSketchesError::temp_io(
+            "create temp file for archive download",
+        ))?;
 
         let mut resp = self.http_client.get(url).send().await?;
         log::debug!("Downloading from URL: {url}");
@@ -384,18 +369,16 @@ impl CompileSketches {
         }
         archive_path.flush()?;
         // Ensure the archive file cursor is at the start before any readers consume it.
-        archive_path.seek(SeekFrom::Start(0)).map_err(|source| {
-            CompileSketchesError::ArchiveExtractionIo {
-                task: "set seek position for archive file to start after download",
-                source,
-            }
-        })?;
+        archive_path
+            .seek(SeekFrom::Start(0))
+            .map_err(CompileSketchesError::archive_io(
+                "set seek position for archive file to start after download",
+            ))?;
 
         let extract_dir = tempfile::TempDir::with_prefix("install_from_download-")
-            .map_err(|source| CompileSketchesError::TempPathIo {
-                task: "create temp path for archive extraction",
-                source,
-            })?
+            .map_err(CompileSketchesError::temp_io(
+                "create temp path for archive extraction",
+            ))?
             // Don't delete the extract dir on drop.
             // We'll clean it up when app exits normally
             .keep();
@@ -408,12 +391,9 @@ impl CompileSketches {
         extract_archive(&mut archive_path, &extract_dir, filename)?;
 
         let archive_root = get_archive_root_path(&extract_dir)?;
-        let src = fs::canonicalize(archive_root.join(source_path)).map_err(|source| {
-            CompileSketchesError::ArchiveExtractionIo {
-                task: "resolve extracted archive root path",
-                source,
-            }
-        })?;
+        let src = fs::canonicalize(archive_root.join(source_path)).map_err(
+            CompileSketchesError::archive_io("resolve extracted archive root path"),
+        )?;
         self.install_from_path(&src, destination_parent_path, destination_name, force)?;
         self.clean_up_paths.push(extract_dir);
         Ok(())
@@ -426,17 +406,13 @@ impl CompileSketches {
 /// otherwise return the extraction directory itself.
 fn get_archive_root_path(extract_dir: &Path) -> Result<PathBuf> {
     let mut found_dir: Option<PathBuf> = None;
-    for entry in
-        fs::read_dir(extract_dir).map_err(|source| CompileSketchesError::ArchiveExtractionIo {
-            task: "read extracted archive directory",
-            source,
-        })?
-    {
+    for entry in fs::read_dir(extract_dir).map_err(CompileSketchesError::archive_io(
+        "read extracted archive directory",
+    ))? {
         let p = entry
-            .map_err(|source| CompileSketchesError::ArchiveExtractionIo {
-                task: "access extracted archive sub-path",
-                source,
-            })?
+            .map_err(CompileSketchesError::archive_io(
+                "access extracted archive sub-path",
+            ))?
             .path();
         if p.is_dir() {
             if let Some(name) = p.file_name().and_then(|s| s.to_str())
@@ -528,5 +504,18 @@ mod tests {
             compile_sketches.sketch_compiler.arduino_cli_path.unwrap(),
             PathBuf::new()
         );
+    }
+
+    #[test]
+    fn install_from_path_without_dest_name() {
+        use std::path::Path;
+        let mut driver = CompileSketches::default();
+        let err = driver
+            .install_from_path(Path::new("/"), Path::new("dest"), None, false)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            CompileSketchesError::MalformedInstallDestPathName(_)
+        ));
     }
 }
