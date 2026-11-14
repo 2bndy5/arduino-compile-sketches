@@ -268,6 +268,26 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn path_dep_missing_name() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut driver = CompileSketches {
+            platforms: Dependencies::default(),
+            ..Default::default()
+        };
+        driver.platforms.path.push(PathEntry {
+            source_path: temp_dir.path().to_string_lossy().into_owned(),
+            name: None,
+        });
+        let installed = InstalledPlatforms { platforms: vec![] };
+        let Err(CompileSketchesError::PlatformDepMissingField { key, .. }) =
+            driver.install_platform_from_path(&installed)
+        else {
+            panic!("Expected error for path dependency without a name");
+        };
+        assert_eq!(key, "name");
+    }
+
     #[tokio::test]
     async fn bad_platform_name() {
         let temp_dir = tempfile::tempdir().unwrap();

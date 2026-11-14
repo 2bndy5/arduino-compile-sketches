@@ -153,12 +153,9 @@ impl SketchCompiler {
         // Otherwise, the arduino-cli binary hits a race condition that surfaces with the message:
         // > unable to rename '/path/to/build/cache/core.a'; reason: File exists
         let task_id = tokio::task::id();
-        let build_cache_dir = tempfile::TempDir::with_prefix(task_id.to_string()).map_err(|e| {
-            CompileSketchesError::TempPathIo {
-                task: "create a temporary directory for the build cache",
-                source: e,
-            }
-        })?;
+        let build_cache_dir = tempfile::TempDir::with_prefix(task_id.to_string()).map_err(
+            CompileSketchesError::temp_io("create a temporary directory for the build cache"),
+        )?;
         cmd.env(
             "ARDUINO_BUILD_CACHE_PATH",
             build_cache_dir.path().as_os_str(),
